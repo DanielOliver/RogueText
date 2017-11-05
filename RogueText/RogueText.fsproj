@@ -53,6 +53,7 @@
     <Compile Include="AssemblyInfo.fs" />
     <Content Include="packages.config" />
     <Compile Include="Tokenizer.fs" />
+    <Compile Include="BackTracker.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />

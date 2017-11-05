@@ -47,7 +47,6 @@ let private attributeSeparatorRegex = Text.RegularExpressions.Regex(attributeSep
 [<RequireQualifiedAccess>]
 type AttributeToken =
     | Identifier of string
-    | QuotedIdentifier of string
     | Equals
 
 let private cleanAndMapAttributeString text =
@@ -56,7 +55,7 @@ let private cleanAndMapAttributeString text =
         AttributeToken.Equals 
     | _ when text.Length >= 2 && text.StartsWith(@"'") && text.EndsWith(@"'") -> 
         let cleanText = text.Substring(1, text.Length-2).Replace(@"\'", @"'")
-        AttributeToken.QuotedIdentifier cleanText
+        AttributeToken.Identifier cleanText
     | _ ->
         AttributeToken.Identifier text
 
@@ -65,5 +64,3 @@ let TokenizeAttributes text =
     |> attributeSeparatorRegex.Split
     |> Array.filter (String.IsNullOrWhiteSpace >> not)
     |> Array.map (cleanAndMapAttributeString)
-
-

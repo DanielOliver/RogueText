@@ -10,9 +10,13 @@ let main argv =
     printfn "%A" output
 
 
-    let input = @"What what what 'and how\' unless' "
+    let input = @"What what what 'and how\' unless' color=primaryColor"
     let output = RogueText.Tokenizer.TokenizeAttributes input
     printfn "%A" output
+
+    let backTrack = RogueText.BackTracker.ReadAttributes input
+    printfn "%A" backTrack
+
 
     System.Console.ReadLine() |> ignore
     0 // return an integer exit code
