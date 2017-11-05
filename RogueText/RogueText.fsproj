@@ -52,6 +52,7 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Content Include="packages.config" />
+    <Compile Include="Tokenizer.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />
