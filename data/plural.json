@@ -1,0 +1,5 @@
+[
+    { "singular": "cat", "plural": "cats" },
+    { "singular": "dwarf", "plural": "dwarves" },
+    { "singular": "person", "plural": "people" }
+]
