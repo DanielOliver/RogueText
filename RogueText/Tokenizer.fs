@@ -11,6 +11,15 @@ let private tagSeparators =
 let private tagSeparatorRegexString = "(" + String.Join("|", tagSeparators) + ")"
 let private tagSeparatorRegex = Text.RegularExpressions.Regex(tagSeparatorRegexString)
 
+
+type TagTokenType =
+    | CloseTagType
+    | OpenTagCloseType
+    | OpenTagStartType
+    | OpenTagEndType
+    | TextType
+    | WhitespaceType
+
 [<RequireQualifiedAccess>]
 type TagToken =
     | CloseTag
@@ -22,11 +31,21 @@ type TagToken =
     static member Identify text =
         match text with
         | "{{>}}" -> TagToken.CloseTag
-        | ">}}" -> TagToken.OpenTagClose
+        | ">}}" -> TagToken.OpenTagEnd
         | "{{" -> TagToken.OpenTagStart
-        | "}}" -> TagToken.OpenTagEnd
+        | "}}" -> TagToken.OpenTagClose
         | x when String.IsNullOrWhiteSpace(x) -> TagToken.Whitespace
         | _ -> TagToken.Text text
+    
+module TagTokenType =
+    let Of token =
+        match token with
+        | TagToken.CloseTag -> CloseTagType
+        | TagToken.OpenTagClose -> OpenTagCloseType
+        | TagToken.OpenTagStart -> OpenTagStartType
+        | TagToken.OpenTagEnd -> OpenTagEndType
+        | TagToken.Text _ -> TextType
+        | TagToken.Whitespace -> WhitespaceType
 
 let TokenizeTags text = 
     text 
@@ -39,7 +58,6 @@ let private attributeSeparators =
         @"[A-Za-z][A-Za-z0-9_]*"
         @"="
         @"\s*"
-        @".*"
     |]
 let private attributeSeparatorRegexString = "(" + String.Join("|", attributeSeparators) + ")"
 let private attributeSeparatorRegex = Text.RegularExpressions.Regex(attributeSeparatorRegexString)
