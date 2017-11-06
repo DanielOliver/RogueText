@@ -14,6 +14,7 @@ let private tagSeparatorRegex = Text.RegularExpressions.Regex(tagSeparatorRegexS
 
 type TagTokenType =
     | CloseTagType
+    | OpenTagType
     | OpenTagCloseType
     | OpenTagStartType
     | OpenTagEndType
@@ -23,6 +24,7 @@ type TagTokenType =
 [<RequireQualifiedAccess>]
 type TagToken =
     | CloseTag
+    | OpenTag
     | OpenTagClose
     | OpenTagStart
     | OpenTagEnd
@@ -31,6 +33,7 @@ type TagToken =
     static member Identify text =
         match text with
         | "{{>}}" -> TagToken.CloseTag
+        | "{{}}" -> TagToken.OpenTag
         | ">}}" -> TagToken.OpenTagEnd
         | "{{" -> TagToken.OpenTagStart
         | "}}" -> TagToken.OpenTagClose
@@ -41,6 +44,7 @@ module TagTokenType =
     let Of token =
         match token with
         | TagToken.CloseTag -> CloseTagType
+        | TagToken.OpenTag -> OpenTagType
         | TagToken.OpenTagClose -> OpenTagCloseType
         | TagToken.OpenTagStart -> OpenTagStartType
         | TagToken.OpenTagEnd -> OpenTagEndType

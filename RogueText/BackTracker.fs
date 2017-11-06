@@ -123,6 +123,8 @@ let private consumeTagStart (tokens: TagToken list) =
     |> expect OpenTagStartType
     |> nextList (fun (head, tail, _) -> 
         match head with
+        | TagToken.OpenTag ->
+            Ok (Map.empty, TagStart.Closed), tail
         | TagToken.OpenTagClose -> 
             Ok (Map.empty, TagStart.Closed), tail
         | TagToken.OpenTagEnd ->
@@ -153,6 +155,8 @@ let private consumeText (tokens: TagToken list) =
         match head with
         | TagToken.Text text -> 
             Ok <| AST.Contents text
+        | TagToken.Whitespace ->
+            Ok <| AST.Contents " "
         | _ ->
             Error "Expected text."
     )
@@ -204,15 +208,9 @@ let rec private readAST (tokens: TagToken list) (state: StateStack list) =
 
 let ReadTemplate text =
     let tokens = TokenizeTags text |> List.ofArray
-    //let (result, tail) = consumeTagStart tokens
-    //printfn "%A" result
-    //let (result, tail) = consumeText tail
-    //printfn "%A" result
-    //let (result, tail) = consumeTagEnd tail
-    //printfn "%A" result
-
+    
     let result = readAST tokens []
 
-    (result)
+    result |> Result.map List.rev
 
 
