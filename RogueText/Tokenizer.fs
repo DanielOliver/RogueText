@@ -3,10 +3,10 @@
 open System
 
 let private tagSeparators = 
-    [|  "{{>}}"
-        ">}}"
-        "{{"
-        "}}"
+    [|  "(?<=^|[^{]){>}(?=$|[^}])"
+        ">}(?=$|[^}])"
+        "(?<=^|[^{]){(?=$|[^{])"
+        "(?<=^|[^}])}(?=$|[^}])"
     |]
 let private tagSeparatorRegexString = "(" + String.Join("|", tagSeparators) + ")"
 let private tagSeparatorRegex = Text.RegularExpressions.Regex(tagSeparatorRegexString)
@@ -21,6 +21,10 @@ type TagTokenType =
     | TextType
     | WhitespaceType
 
+    
+let private cleanTagString (text: string) =
+    text.Replace("{{", "{").Replace("}}", "}")
+
 [<RequireQualifiedAccess>]
 type TagToken =
     | CloseTag
@@ -32,13 +36,13 @@ type TagToken =
     | Whitespace
     static member Identify text =
         match text with
-        | "{{>}}" -> TagToken.CloseTag
-        | "{{}}" -> TagToken.OpenTag
-        | ">}}" -> TagToken.OpenTagEnd
-        | "{{" -> TagToken.OpenTagStart
-        | "}}" -> TagToken.OpenTagClose
+        | "{>}" -> TagToken.CloseTag
+        | "{}" -> TagToken.OpenTag
+        | ">}" -> TagToken.OpenTagEnd
+        | "{" -> TagToken.OpenTagStart
+        | "}" -> TagToken.OpenTagClose
         | x when String.IsNullOrWhiteSpace(x) -> TagToken.Whitespace
-        | _ -> TagToken.Text text
+        | _ -> TagToken.Text <| cleanTagString text
     
 module TagTokenType =
     let Of token =
@@ -50,7 +54,7 @@ module TagTokenType =
         | TagToken.OpenTagEnd -> OpenTagEndType
         | TagToken.Text _ -> TextType
         | TagToken.Whitespace -> WhitespaceType
-
+        
 let TokenizeTags text = 
     text 
     |> tagSeparatorRegex.Split 

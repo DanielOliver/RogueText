@@ -4,8 +4,7 @@ open RogueText
 [<EntryPoint>]
 let main argv = 
 
-    "four and a half {{ silent attribute='something'}} some {{word>}} informative text {{}} maybe {{nested2>}} {{>}} OR IS IT?{{>}} not helpful{{plural}}unless five equals nine{{>}}"
-    //|> Tokenizer.TokenizeTags
+    "{ color='primaryColor' pluralIf='variable1'}{ number='variable1' capitalize>} { word='mouse'>} { word='has'>} appeared. Mice are fierce fighters and deadly if swarming.{>}"
     |> RogueText.BackTracker.ReadTemplate 
     |> printfn "%A"
 

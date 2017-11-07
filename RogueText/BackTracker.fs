@@ -182,27 +182,34 @@ let rec private readAST (tokens: TagToken list) (state: StateStack list) =
         | Ok(attributes, TagStart.Closed), remaining ->
             let tag = OpenTag attributes
             readAST remaining (tag :: state)
+
         | (Error _), _ ->
             match consumeTagEnd tokens with
             | Ok(), remaining ->
                 let rec buildContents tail items =
                     match tail with
                     | [] -> Error "Expected Something"
+
                     | head :: tail -> 
                         match head with
                         | OpenTag attributes -> 
                             Ok(attributes, items, tail)
+
                         | Element item ->
                             buildContents tail (item :: items)
+
                 match  buildContents state [] with
                 | Ok (attributes, contents, state) -> 
                     readAST remaining ((Element <| AST.Tag(attributes, contents)) :: state)
+
                 | Error err ->
                     Error err
+
             | Error _, _ ->
                 match consumeText tokens with
                 | Ok text, remaining ->
                     readAST remaining ((Element text) :: state)
+
                 | Error _, _ ->
                     Error "Expected something"
 
