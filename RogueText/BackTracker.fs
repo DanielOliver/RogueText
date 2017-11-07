@@ -218,6 +218,5 @@ let ReadTemplate text =
     
     let result = readAST tokens []
 
-    result |> Result.map List.rev
-
+    result |> Result.map (List.choose (function | OpenTag _ -> None | Element ast -> Some ast) >> List.rev)
 
