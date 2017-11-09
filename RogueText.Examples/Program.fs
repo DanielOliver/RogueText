@@ -1,14 +1,11 @@
-﻿open System
-open RogueText
-open RogueText.BackTracker
-
+﻿
 [<EntryPoint>]
 let main argv = 
-    "{ color='primaryColor' pluralIf='variable1'}{ number='variable1' capitalize bold>} { word='mouse'>} { word='has'>} appeared. Mice are fierce fighters and deadly if swarming.{>}"
+    "{ color='primaryColor' pluralIf='variable1'}{ number='variable1' capitalize bold>} { word='mouse'>} { word='has'>} appeared. Mice are fierce fighters and deadly if swarming.{>}{}one{>}"
     |> RogueText.BackTracker.ReadTemplate 
-    |> (function 
-        | Ok items -> items |> Seq.iter (printfn "%A")
-        | Error err -> err |> printfn "%A")
+    |> printfn "%A"
+
+    System.Console.ReadLine() |> ignore
     0 // return an integer exit code
     
 //Tag

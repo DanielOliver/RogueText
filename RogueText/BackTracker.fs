@@ -214,9 +214,21 @@ let rec private readAST (tokens: TagToken list) (state: StateStack list) =
                     Error "Expected something"
 
 let ReadTemplate text =
+    if System.String.IsNullOrWhiteSpace text then Error "expected input"
+    else
+
     let tokens = TokenizeTags text |> List.ofArray
     
     let result = readAST tokens []
 
-    result |> Result.map (List.choose (function | OpenTag _ -> None | Element ast -> Some ast) >> List.rev)
+    result 
+    |> Result.map (
+        List.choose (function | OpenTag _ -> None | Element ast -> Some ast) 
+        >> function 
+           | [] -> failwith "Never expected empty result"
+           | x :: [] -> x
+           | items -> AST.Tag(Map.empty, List.rev items)
+    )
+        
+        //List.choose (function | OpenTag _ -> None | Element ast -> Some ast) >> List.rev)
 
