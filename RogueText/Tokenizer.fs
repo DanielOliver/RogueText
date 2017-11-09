@@ -5,22 +5,22 @@ open System
 let private tagSeparators = 
     [|  "(?<=^|[^{]){>}(?=$|[^}])"
         ">}(?=$|[^}])"
+        "(?<=^|[^{]){@"
         "(?<=^|[^{]){(?=$|[^{])"
         "(?<=^|[^}])}(?=$|[^}])"
     |]
 let private tagSeparatorRegexString = "(" + String.Join("|", tagSeparators) + ")"
 let private tagSeparatorRegex = Text.RegularExpressions.Regex(tagSeparatorRegexString)
 
-
 type TagTokenType =
     | CloseTagType
     | OpenTagType
+    | OpenVariableTagType
     | OpenTagCloseType
     | OpenTagStartType
     | OpenTagEndType
     | TextType
     | WhitespaceType
-
     
 let private cleanTagString (text: string) =
     text.Replace("{{", "{").Replace("}}", "}")
@@ -29,6 +29,7 @@ let private cleanTagString (text: string) =
 type TagToken =
     | CloseTag
     | OpenTag
+    | OpenVariableTag
     | OpenTagClose
     | OpenTagStart
     | OpenTagEnd
@@ -38,6 +39,7 @@ type TagToken =
         match text with
         | "{>}" -> TagToken.CloseTag
         | "{}" -> TagToken.OpenTag
+        | "{@" -> TagToken.OpenVariableTag
         | ">}" -> TagToken.OpenTagEnd
         | "{" -> TagToken.OpenTagStart
         | "}" -> TagToken.OpenTagClose
@@ -49,6 +51,7 @@ module TagTokenType =
         match token with
         | TagToken.CloseTag -> CloseTagType
         | TagToken.OpenTag -> OpenTagType
+        | TagToken.OpenVariableTag -> OpenVariableTagType
         | TagToken.OpenTagClose -> OpenTagCloseType
         | TagToken.OpenTagStart -> OpenTagStartType
         | TagToken.OpenTagEnd -> OpenTagEndType
@@ -80,7 +83,7 @@ let private cleanAndMapAttributeString text =
     | "=" -> 
         AttributeToken.Equals 
     | _ when text.Length >= 2 && text.StartsWith(@"'") && text.EndsWith(@"'") -> 
-        let cleanText = text.Substring(1, text.Length-2).Replace(@"\'", @"'")
+        let cleanText = text.Substring(1, text.Length-2).Replace(@"\'", @"'").Trim()
         AttributeToken.Identifier cleanText
     | _ ->
         AttributeToken.Identifier text

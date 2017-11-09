@@ -1,12 +1,7 @@
 ﻿module RogueText.BackTracker
 
+open RogueText
 open RogueText.Tokenizer
-
-type Attributes = Map<string, string option>
-
-type AST =
-    | Contents of string
-    | Tag of Attributes * AST list
 
 type private InternalState = 
     | ReadingAttributes
@@ -14,16 +9,16 @@ type private InternalState =
     | StartTag
     | EndTag
     
-let private getNext2 position (items: _ array) =
+let private getNext position (items: _ array) =
     if position >= 0 && position < items.Length then Some items.[position]
     else None
     
 let private consumeAttribute (position: int) (tokens: AttributeToken array) =
     match tokens.[position] with
     | AttributeToken.Identifier(identifier) -> 
-        match tokens |> getNext2 (position + 1) with
+        match tokens |> getNext (position + 1) with
         | Some AttributeToken.Equals ->
-            match tokens |> getNext2(position + 2) with
+            match tokens |> getNext(position + 2) with
             | None -> 
                 (Result.Error <| sprintf "Expected value for \"%s\"." identifier), 0
             | Some AttributeToken.Equals -> 
@@ -59,12 +54,8 @@ let ReadAttributes (text: string) =
         eatTokens 0 Map.empty
     else
         Result.Ok Map.empty
-        
 
-
-
-
-let nextList mapper (previous: Result<_,_>, items: _ list) =
+let private nextList mapper (previous: Result<_,_>, items: _ list) =
     match previous with
     | Error err -> (Error err), items
     | Ok success -> 
@@ -75,7 +66,7 @@ let nextList mapper (previous: Result<_,_>, items: _ list) =
             | (Error err), remaining -> (Error err), remaining
             | (Ok success), remaining -> (Ok success), remaining
 
-let next mapper (previous: Result<_,_>, items: _ list) =
+let private next mapper (previous: Result<_,_>, items: _ list) =
     match previous with
     | Error err -> (Error err), items
     | Ok success -> 
@@ -86,7 +77,7 @@ let next mapper (previous: Result<_,_>, items: _ list) =
             | Error err -> (Error err), tail
             | Ok success -> (Ok success), tail
 
-let choose mapper (previous: Result<_,_>, items: _ list) =
+let private choose mapper (previous: Result<_,_>, items: _ list) =
     match previous with
     | Error err -> (Error err), items
     | Ok success -> 
@@ -100,7 +91,7 @@ let choose mapper (previous: Result<_,_>, items: _ list) =
                 | Some x -> (Ok x), tail
                 | None -> previous, items
                 
-let start (items: _ list) =
+let private start (items: _ list) =
     Ok(), items
 
 let private expect tagTokenType previous =
@@ -113,7 +104,7 @@ let private expect tagTokenType previous =
     )
     
 [<RequireQualifiedAccess>]
-type TagStart =
+type private TagStart =
     | Ended
     | Closed
     
@@ -148,6 +139,19 @@ let private consumeTagStart (tokens: TagToken list) =
             Error "Expected OpenTagClose, OpenTagEnd, or Text.", tail
     )
 
+let private consumeVariableTag (tokens: TagToken list) =
+    tokens 
+    |> start
+    |> expect OpenVariableTagType
+    |> next (fun (head, _) -> 
+        match head with
+        | TagToken.Text text ->
+            Ok <| VariableTag("@" + text)
+        | _ ->
+            Error "Expected text."
+    )
+    |> expect OpenTagCloseType
+
 let private consumeText (tokens: TagToken list) =
     tokens
     |> start
@@ -167,51 +171,109 @@ let private consumeTagEnd (tokens: TagToken list) =
     |> expect TagTokenType.CloseTagType
 
 
-type StateStack = 
+type private StateStack = 
     | OpenTag of Attributes
     | Element of AST
 
+        
 let rec private readAST (tokens: TagToken list) (state: StateStack list) =
-    if tokens.IsEmpty then Ok state
-    else
+    let tryTagStart() =
         match consumeTagStart tokens with
         | Ok(attributes, TagStart.Ended), remaining ->
             let tag = AST.Tag(attributes, [])
             readAST remaining ((Element tag) :: state)
-
         | Ok(attributes, TagStart.Closed), remaining ->
             let tag = OpenTag attributes
             readAST remaining (tag :: state)
+        | (Error err), _ -> Error err
 
-        | (Error _), _ ->
-            match consumeTagEnd tokens with
-            | Ok(), remaining ->
-                let rec buildContents tail items =
-                    match tail with
-                    | [] -> Error "Expected Something"
+    let tryTagEnd() = 
+        match consumeTagEnd tokens with
+        | Ok(), remaining ->
+            let rec buildContents tail items =
+                match tail with
+                | [] -> Error "Expected Something"
+                | head :: tail -> 
+                    match head with
+                    | OpenTag attributes -> 
+                        Ok(attributes, items, tail)
+                    | Element item ->
+                        buildContents tail (item :: items)
+            match  buildContents state [] with
+            | Ok (attributes, contents, state) -> 
+                readAST remaining ((Element <| AST.Tag(attributes, contents)) :: state)
+            | Error err ->
+                Error err
+        | Error err, _ -> Error err
 
-                    | head :: tail -> 
-                        match head with
-                        | OpenTag attributes -> 
-                            Ok(attributes, items, tail)
+    let tryConsumeText() =
+        match consumeText tokens with
+        | Ok text, remaining ->
+            readAST remaining ((Element text) :: state)
+        | Error err, _ -> Error err
+    
+    let tryConsumeVariable() =
+        match consumeVariableTag tokens with
+        | Ok ast, remaining ->
+            readAST remaining ((Element ast) :: state)
+        | Error _, _ ->
+            Error "Expected something"
 
-                        | Element item ->
-                            buildContents tail (item :: items)
+    if tokens.IsEmpty then Ok state
+    else
+        let tryFirst check2 check1 =
+            match check1 with
+            | Ok ok -> Ok ok
+            | Error _ -> check2()
 
-                match  buildContents state [] with
-                | Ok (attributes, contents, state) -> 
-                    readAST remaining ((Element <| AST.Tag(attributes, contents)) :: state)
+        tryTagStart()
+        |> tryFirst tryTagEnd
+        |> tryFirst tryConsumeText
+        |> tryFirst tryConsumeVariable
+        
+        //match consumeTagStart tokens with
+        //| Ok(attributes, TagStart.Ended), remaining ->
+        //    let tag = AST.Tag(attributes, [])
+        //    readAST remaining ((Element tag) :: state)
 
-                | Error err ->
-                    Error err
+        //| Ok(attributes, TagStart.Closed), remaining ->
+        //    let tag = OpenTag attributes
+        //    readAST remaining (tag :: state)
 
-            | Error _, _ ->
-                match consumeText tokens with
-                | Ok text, remaining ->
-                    readAST remaining ((Element text) :: state)
+        //| (Error _), _ ->
+        //    match consumeTagEnd tokens with
+        //    | Ok(), remaining ->
+        //        let rec buildContents tail items =
+        //            match tail with
+        //            | [] -> Error "Expected Something"
 
-                | Error _, _ ->
-                    Error "Expected something"
+        //            | head :: tail -> 
+        //                match head with
+        //                | OpenTag attributes -> 
+        //                    Ok(attributes, items, tail)
+
+        //                | Element item ->
+        //                    buildContents tail (item :: items)
+
+        //        match  buildContents state [] with
+        //        | Ok (attributes, contents, state) -> 
+        //            readAST remaining ((Element <| AST.Tag(attributes, contents)) :: state)
+
+        //        | Error err ->
+        //            Error err
+
+        //    | Error _, _ ->
+        //        match consumeText tokens with
+        //        | Ok text, remaining ->
+        //            readAST remaining ((Element text) :: state)
+
+        //        | Error _, _ ->
+        //            match consumeVariableTag tokens with
+        //            | Ok ast, remaining ->
+        //                readAST remaining ((Element ast) :: state)
+
+        //            | Error _, _ ->
+        //                Error "Expected something"
 
 let ReadTemplate text =
     if System.String.IsNullOrWhiteSpace text then Error "expected input"

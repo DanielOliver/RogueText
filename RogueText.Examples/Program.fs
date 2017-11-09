@@ -1,9 +1,17 @@
 ﻿
 [<EntryPoint>]
 let main argv = 
-    "{ color='primaryColor' pluralIf='variable1'}{ number='variable1' capitalize bold>} { word='mouse'>} { word='has'>} appeared. Mice are fierce fighters and deadly if swarming.{>}{}one{>}"
+    "{ color='primaryColor' pluralIf='@variable1'}{ number='variable1' capitalize bold>} { word='mouse'>} { word='has'>} appeared. Mice are fierce fighters and deadly if swarming.{>} Mice are {@ something? }"
     |> RogueText.BackTracker.ReadTemplate 
-    |> printfn "%A"
+    |> (function 
+        | Ok ok -> 
+            printfn "%A" ok
+            printfn ""
+
+            ok 
+            |> RogueText.Transform.GetVariables 
+            |> printfn "%A"
+        | Error err -> err |> printfn "%A")
 
     System.Console.ReadLine() |> ignore
     0 // return an integer exit code
