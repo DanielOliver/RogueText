@@ -9,7 +9,7 @@ let main argv =
             printfn ""
 
             ok 
-            |> RogueText.Transform.GetVariables 
+            |> RogueText.Transform.FlattenAST 
             |> printfn "%A"
         | Error err -> err |> printfn "%A")
 
