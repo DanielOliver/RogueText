@@ -59,6 +59,7 @@
     <Compile Include="Tokenizer.fs" />
     <Compile Include="BackTracker.fs" />
     <Compile Include="Transform.fs" />
+    <Compile Include="TaggedTextProvider.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />
