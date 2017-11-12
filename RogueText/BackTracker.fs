@@ -2,59 +2,21 @@
 
 open RogueText
 open RogueText.Tokenizer
-
-type private InternalState = 
-    | ReadingAttributes
-    | ReadingContents
-    | StartTag
-    | EndTag
     
 let private getNext position (items: _ array) =
     if position >= 0 && position < items.Length then Some items.[position]
     else None
     
-let private consumeAttribute (position: int) (tokens: AttributeToken array) =
-    match tokens.[position] with
-    | AttributeToken.Identifier(identifier) -> 
-        match tokens |> getNext (position + 1) with
-        | Some AttributeToken.Equals ->
-            match tokens |> getNext(position + 2) with
-            | None -> 
-                (Result.Error <| sprintf "Expected value for \"%s\"." identifier), 0
-            | Some AttributeToken.Equals -> 
-                (Result.Error "Unexpected equals."),0
-            | Some( AttributeToken.Identifier(value)) -> 
-                (Result.Ok(identifier, Some value)), 3
-        | Some(AttributeToken.Identifier(_)) 
-        | None -> 
-            (Result.Ok(identifier, None)), 1
-    | AttributeToken.Equals -> 
-        (Result.Error "Unexpected equals."),0
+let private normalizeVariableName (name: string) =
+    (if name.StartsWith("@") then name.Substring(1)
+     else name).Trim()
 
-let ReadAttributes (text: string) =
-    let tokens = TokenizeAttributes text
-
-    let rec eatTokens nextPosition attributes =
-        let next = tokens |> consumeAttribute nextPosition
-        match next with
-        | Result.Ok(identifier, value), consumed ->
-            let attributes =
-                if System.String.IsNullOrWhiteSpace identifier then
-                    attributes
-                else
-                    Map.add identifier value attributes
-            if consumed + nextPosition >= tokens.Length then
-                Result.Ok attributes
-            else
-                eatTokens (nextPosition + consumed) attributes
-        | Result.Error(error), _ -> 
-            Result.Error error
-
-    if tokens.Length <> 0 then
-        eatTokens 0 Map.empty
+let private getTagText (text: string) =
+    if text.StartsWith("@") then
+        text |> normalizeVariableName |> TagText.Variable
     else
-        Result.Ok Map.empty
-
+        text.Trim() |> TagText.Text
+    
 let private nextList mapper (previous: Result<_,_>, items: _ list) =
     match previous with
     | Error err -> (Error err), items
@@ -103,42 +65,78 @@ let private expect tagTokenType previous =
             Error <| sprintf "Expected type %A." tagTokenType
     )
     
-[<RequireQualifiedAccess>]
-type private TagStart =
-    | Ended
-    | Closed
-    
+let private map mapping (result, tail) =
+    (result |> Result.map mapping, tail)
+
+let private consumeAttribute (position: int) (tokens: AttributeToken array) =
+    match tokens.[position] with
+    | AttributeToken.Identifier(identifier) -> 
+        match tokens |> getNext (position + 1) with
+        | Some AttributeToken.Equals ->
+            match tokens |> getNext(position + 2) with
+            | None -> 
+                (Result.Error <| sprintf "Expected value for \"%s\"." identifier), 0
+            | Some AttributeToken.Equals -> 
+                (Result.Error "Unexpected equals."),0
+            | Some( AttributeToken.Identifier(value)) -> 
+                (Result.Ok(identifier, Some <| getTagText value)), 3
+        | Some(AttributeToken.Identifier(_)) 
+        | None -> 
+            (Result.Ok(identifier, None)), 1
+    | AttributeToken.Equals -> 
+        (Result.Error "Unexpected equals."),0
+
+let ReadAttributes (text: string) =
+    let tokens = TokenizeAttributes text
+
+    let rec eatTokens nextPosition (attributes: TaggedAttributes) =
+        let next = tokens |> consumeAttribute nextPosition
+        match next with
+        | Result.Ok(identifier, value), consumed ->
+            let attributes =
+                if System.String.IsNullOrWhiteSpace identifier then
+                    attributes
+                else
+                    Map.add identifier value attributes
+            if consumed + nextPosition >= tokens.Length then
+                Result.Ok attributes
+            else
+                eatTokens (nextPosition + consumed) attributes
+        | Result.Error(error), _ -> 
+            Result.Error error
+
+    if tokens.Length <> 0 then
+        eatTokens 0 Map.empty
+    else
+        Result.Ok Map.empty
+        
 let private consumeTagStart (tokens: TagToken list) =
     tokens 
     |> start
     |> expect OpenTagStartType
     |> nextList (fun (head, tail, _) -> 
         match head with
-        | TagToken.OpenTag ->
-            Ok (Map.empty, TagStart.Closed), tail
-        | TagToken.OpenTagClose -> 
-            Ok (Map.empty, TagStart.Closed), tail
-        | TagToken.OpenTagEnd ->
-            Ok (Map.empty, TagStart.Ended), tail
         | TagToken.Text text ->
             match ReadAttributes text with
             | Ok attributes ->
+                let startTag = TaggedText.StartTag attributes
                 tail
                 |> start
                 |> next (function
                     | (TagToken.OpenTagClose,_) -> 
-                        Ok(attributes, TagStart.Closed)
+                        Ok(List.singleton startTag)
                     | (TagToken.OpenTagEnd,_) -> 
-                        Ok(attributes, TagStart.Ended)
+                        let endTag = TaggedText.EndTag
+                        Ok([ endTag; startTag ])
                     | _ ->
                         Error "Expected close of tag start."
                 )
             | Error err ->
                 Error "Unable to parse attributes.", tail
         | _ ->
-            Error "Expected OpenTagClose, OpenTagEnd, or Text.", tail
+            Error "Expected attributes: invalid empty start tag.", tail
     )
-
+    
 let private consumeVariableTag (tokens: TagToken list) =
     tokens 
     |> start
@@ -146,102 +144,68 @@ let private consumeVariableTag (tokens: TagToken list) =
     |> next (fun (head, _) -> 
         match head with
         | TagToken.Text text ->
-            Ok <| AST.VariableTag("@" + text)
+            text
+            |> normalizeVariableName
+            |> TaggedText.VariableTag
+            |> Ok
         | _ ->
-            Error "Expected text."
+            Error "Expected variable identifier."
     )
     |> expect OpenTagCloseType
-
+    |> map List.singleton
+    
 let private consumeText (tokens: TagToken list) =
     tokens
     |> start
     |> next(fun (head, _) ->
         match head with
         | TagToken.Text text -> 
-            Ok <| AST.Contents text
+            text
+            |> TaggedText.Text
+            |> Ok
         | TagToken.Whitespace ->
-            Ok <| AST.Contents " "
+            " "
+            |> TaggedText.Text
+            |> Ok
         | _ ->
             Error "Expected text."
     )
+    |> map List.singleton
 
 let private consumeTagEnd (tokens: TagToken list) =
     tokens
     |> start
     |> expect TagTokenType.CloseTagType
-
-type private StateStack = 
-    | OpenTag of ASTAttributes
-    | Element of AST
-        
-let rec private readAST (tokens: TagToken list) (state: StateStack list) =
-    let tryTagStart() =
-        match consumeTagStart tokens with
-        | Ok(attributes, TagStart.Ended), remaining ->
-            let tag = AST.Tag(attributes, [])
-            readAST remaining ((Element tag) :: state)
-        | Ok(attributes, TagStart.Closed), remaining ->
-            let tag = OpenTag attributes
-            readAST remaining (tag :: state)
-        | (Error err), _ -> Error err
-
-    let tryTagEnd() = 
-        match consumeTagEnd tokens with
-        | Ok(), remaining ->
-            let rec buildContents tail items =
-                match tail with
-                | [] -> Error "Expected Something"
-                | head :: tail -> 
-                    match head with
-                    | OpenTag attributes -> 
-                        Ok(attributes, items, tail)
-                    | Element item ->
-                        buildContents tail (item :: items)
-            match  buildContents state [] with
-            | Ok (attributes, contents, state) -> 
-                readAST remaining ((Element <| AST.Tag(attributes, contents)) :: state)
-            | Error err ->
-                Error err
-        | Error err, _ -> Error err
-
-    let tryConsumeText() =
-        match consumeText tokens with
-        | Ok text, remaining ->
-            readAST remaining ((Element text) :: state)
-        | Error err, _ -> Error err
+    |> map (fun () -> List.singleton TaggedText.EndTag)
     
-    let tryConsumeVariable() =
-        match consumeVariableTag tokens with
-        | Ok ast, remaining ->
-            readAST remaining ((Element ast) :: state)
-        | Error _, _ ->
-            Error "Expected something"
-
-    if tokens.IsEmpty then Ok state
+let rec private readAST (tokens: TagToken list) (state: TaggedText list) =
+    if tokens.IsEmpty then Ok state, tokens
     else
-        let tryFirst check2 check1 =
+        let tryFirst check check1 =
             match check1 with
-            | Ok ok -> Ok ok
-            | Error _ -> check2()
+            | (Ok ok), remaining -> (Ok ok), remaining
+            | Error _, _ -> check tokens
 
-        tryTagStart()
-        |> tryFirst tryTagEnd
-        |> tryFirst tryConsumeText
-        |> tryFirst tryConsumeVariable
-   
+        let (consumption, remaining) = 
+            consumeTagStart tokens
+            |> tryFirst consumeTagEnd
+            |> tryFirst consumeText
+            |> tryFirst consumeVariableTag
+            
+        match consumption with
+        | Ok addedState ->
+            readAST remaining (List.append addedState state)
+        | Error _ ->
+            consumption, remaining
+               
 let ReadTemplate text =
     if System.String.IsNullOrWhiteSpace text then Error "expected input"
     else
 
     let tokens = TokenizeTags text |> List.ofArray
     
-    let result = readAST tokens []
+    let (result, _) = readAST tokens []
 
     result 
-    |> Result.map (
-        List.choose (function | OpenTag _ -> None | Element ast -> Some ast) 
-        >> function 
-           | [] -> failwith "Never expected empty result"
-           | x :: [] -> x
-           | items -> AST.Tag(Map.empty, List.rev items)
-    )
+    |> Result.map List.rev
+    

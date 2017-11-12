@@ -1,11 +1,4 @@
 ﻿namespace RogueText
-
-type ASTAttributes = Map<string, string option>
-
-type AST =
-    | Contents of string
-    | Tag of ASTAttributes * AST list
-    | VariableTag of string
     
 type TagText =
     | Variable of string
