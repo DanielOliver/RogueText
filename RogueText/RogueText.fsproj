@@ -50,16 +50,15 @@
   </Choose>
   <Import Project="$(FSharpTargetsPath)" />
   <ItemGroup>
+    <Compile Include="AssemblyInfo.fs" />
+    <Content Include="packages.config" />
     <Compile Include="..\download\ProvidedTypes.fs">
       <Link>ProvidedTypes.fs</Link>
     </Compile>
-    <Compile Include="AssemblyInfo.fs" />
-    <Content Include="packages.config" />
     <Compile Include="Core.fs" />
     <Compile Include="Tokenizer.fs" />
     <Compile Include="BackTracker.fs" />
     <Compile Include="Transform.fs" />
-    <None Include="paket.dependencies" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />
