@@ -1,62 +1,159 @@
-#tool nuget:?package=NUnit.ConsoleRunner&version=3.4.0
-//////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// ADDINS
+///////////////////////////////////////////////////////////////////////////////
+
+#tool "nuget:?package=GitVersion.CommandLine"
+#addin "Cake.Figlet"
+
+///////////////////////////////////////////////////////////////////////////////
 // ARGUMENTS
-//////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
 var target = Argument("target", "Default");
 var configuration = Argument("configuration", "Release");
 
-//////////////////////////////////////////////////////////////////////
-// PREPARATION
-//////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+// CONFIGURATION
+///////////////////////////////////////////////////////////////////////////////
 
-// Define directories.
-var buildDir = Directory("./RogueText.Examples/bin") + Directory(configuration);
+var projectName = "RogueText";
+var projectFile = File("./src/RogueText/RogueText.fsproj");
+var testProjectFile = File("./src/RogueText.Tests/RogueText.Tests.fsproj");
+var solutionFile = File("./src/RogueText.sln");
+var nugetVersion = "";
+var semVer = "";
+var nugetApiKey = Argument("NUGET_API_KEY", EnvironmentVariable("NUGET_API_KEY"));
 
-//////////////////////////////////////////////////////////////////////
+var branch = EnvironmentVariable("APPVEYOR_REPO_BRANCH") ?? "";
+var isMasterBranch = branch.ToUpper().Contains("MASTER");
+var isTagged = (EnvironmentVariable("APPVEYOR_REPO_TAG") ?? "").Contains("true");
+var tagName = EnvironmentVariable("APPVEYOR_REPO_TAG_NAME") ?? "";
+
+var local = BuildSystem.IsLocalBuild;
+var isRunningOnAppVeyor = AppVeyor.IsRunningOnAppVeyor;
+var isPullRequest = AppVeyor.Environment.PullRequest.IsPullRequest;
+
+///////////////////////////////////////////////////////////////////////////////
+// SETUP / TEARDOWN
+///////////////////////////////////////////////////////////////////////////////
+
+Setup(ctx =>
+{
+   // Executed BEFORE the first task.
+    Information(Figlet("RogueText"));
+    Information("");
+    Information("Branch: " + (branch ?? ""));
+    Information("tagName: " + tagName);
+    Information("IsTagged: " + (isTagged ? "true": "false"));
+    Information("IsPullRequest: " + (isPullRequest ? "true": "false"));
+});
+
+Teardown(ctx =>
+{
+   // Executed AFTER the last task.
+   Information("Finished running tasks.");
+});
+
+///////////////////////////////////////////////////////////////////////////////
 // TASKS
-//////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 
-Task("Clean")
+Task("clean")
     .Does(() =>
 {
-    CleanDirectory(buildDir);
+    CleanDirectories("./build");
+    CleanDirectories("./**/bin");
+    CleanDirectories("./**/obj");
+    CreateDirectory("./build");
 });
 
-Task("Restore-NuGet-Packages")
-    .IsDependentOn("Clean")
+Task("get-version")
     .Does(() =>
 {
-    NuGetRestore("./RogueText.sln");
+    var version = GitVersion(new GitVersionSettings());
+
+    semVer = version.SemVer;
+    nugetVersion = version.NuGetVersionV2;
+
+    Information("SemVer: " + semVer);
+    Information("NuGet: " + nugetVersion);
 });
 
-Task("Download-File-References")
-    .IsDependentOn("Clean")
+Task("set-version")
     .Does(() =>
 {
-    var outputPath = File("./download/ProvidedTypes.fs");
-    DownloadFile("https://raw.githubusercontent.com/fsprojects/FSharp.TypeProviders.SDK/f3f821c6404af37a49656c87a550b7eaf30454d9/src/ProvidedTypes.fs", outputPath);
+	var version = GitVersion(new GitVersionSettings {
+        UpdateAssemblyInfo = true
+    });
+
+	semVer = version.SemVer;
+	nugetVersion = version.NuGetVersionV2;
+
+    // ReplaceProperty("Version", nugetVersion);
+    // ReplaceProperty("Copyright", "Copyright (c) " + DateTime.Now.Year);
+
+	Information("Nuget Version: " + nugetVersion);
+    Information("SemVer: " + semVer);
 });
 
-Task("Build")
-    .IsDependentOn("Restore-NuGet-Packages")
-    .IsDependentOn("Download-File-References")
+Task("restore-nuget-packages")
+    .IsDependentOn("clean")
     .Does(() =>
 {
-    // Use MSBuild
-    MSBuild("./RogueText.sln", settings =>
-    settings.SetConfiguration(configuration));
+    Information("Restoring packages for {0}", solutionFile);
+
+    DotNetCoreRestore(projectFile);
+    DotNetCoreRestore(projectFile);
 });
 
-//////////////////////////////////////////////////////////////////////
-// TASK TARGETS
-//////////////////////////////////////////////////////////////////////
+Task("test")
+    .Does(() =>
+{
+    DotNetCoreTest(testProjectFile);
+});
+
+Task("pack")
+    .IsDependentOn("set-version")
+    .IsDependentOn("clean")
+	.IsDependentOn("restore-nuget-packages")
+    .IsDependentOn("test")
+.Does(() =>
+{
+    var msBuildSettings = new DotNetCoreMSBuildSettings();
+    msBuildSettings.Properties["PackageVersion"] = new[] { semVer };
+    msBuildSettings.Properties["TargetFrameworks"] = new[] { "netstandard2.0" };
+
+    var settings = new DotNetCorePackSettings
+    {
+        Configuration = "Release",
+        OutputDirectory = "./build/",
+        MSBuildSettings = msBuildSettings
+    };
+
+    DotNetCorePack("./src/RogueText/RogueText.fsproj", settings);
+});
+
+Task("push")
+    .IsDependentOn("pack")
+    .WithCriteria(() => isRunningOnAppVeyor && isMasterBranch && !isPullRequest && isTagged)
+.Does(() =>
+{
+    var files = GetFiles("./build/*.nupkg");
+    foreach(var nupkgFile in files)
+    {
+        Information("File: {0}", nupkgFile);
+        var settings = new DotNetCoreNuGetPushSettings
+        {
+            ApiKey = nugetApiKey,
+            Source = "https://api.nuget.org/v3/index.json"
+        };
+
+        DotNetCoreNuGetPush(nupkgFile.ToString(), settings);
+    }
+});
+
 
 Task("Default")
-    .IsDependentOn("Build");
-
-//////////////////////////////////////////////////////////////////////
-// EXECUTION
-//////////////////////////////////////////////////////////////////////
+    .IsDependentOn("push");
 
 RunTarget(target);
