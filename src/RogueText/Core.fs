@@ -6,20 +6,22 @@ type Types =
     | Boolean of bool
     | String of string
     | Array of Types array
+    | None
 
-type Attributes = Types Set
+type Attributes = Map<string, Types>
 
 and WordFragment =
     {   Word: string
         Attributes: Attributes
     }
 
-and Component = 
+and Element = 
     {   Fragments: Tree list
         Attributes: Attributes
+        Name: string
     }
 
 and Tree =
     | Text of string
     | Word of WordFragment
-    | Branch of Component
+    | Element of Element

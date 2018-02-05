@@ -1,6 +1,7 @@
 namespace RogueText.Tests
 
 open NUnit.Framework
+open RogueText.Core
 
 [<ParserTests>]
 type ParserTests () =
@@ -49,4 +50,26 @@ type ParserTests () =
             | true, Error _ -> Assert.Fail(sprintf "Expected \"%s\" to match \"%s\"." fragment.Remainder textToAccept)
             | false, Ok(_, _) -> Assert.Fail(sprintf "Expected \"%s\" to NOT find match." fragment.Remainder)
             | false, Error _ -> Assert.Pass()
+            
+    [<Test>]
+    member this.TestElement () =
+        let emptyElement name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  }
 
+        let testFragments = 
+            [   true, "<elementName></>", emptyElement "elementName"
+                true, "<elementName>four</>", { emptyElement "elementName" with Fragments = [ Tree.Text "four" ]  }
+                false, "<elementName>four", { Element.Name = ""; Attributes = Map.empty; Fragments = List.empty  }
+                true, "<elementName> four <subElement234/> </>", { emptyElement "elementName" with Fragments = [ Tree.Text " four "; Tree.Element(emptyElement "subElement234") ]  }
+                true, "<elementName> four <subElement234> <sub234/> </> </>", { emptyElement "elementName" with Fragments = [ Tree.Text " four "; Tree.Element({emptyElement "subElement234" with Fragments = [ Tree.Element(emptyElement "sub234") ] }) ] }
+            ] 
+            |> List.map (fun (shouldAccept, text, elementToCompare) -> shouldAccept, (text |> FLexer.Core.ClassifierStatus<string>.OfString), elementToCompare)
+
+        for (shouldAccept, fragment, elementToCompare) in testFragments do
+
+            let fragmentResult = RogueText.Parser.AcceptElement fragment FLexer.Core.Continuation.None
+        
+            match shouldAccept, fragmentResult with
+            | true, Ok((Tree.Element element), _) -> Assert.AreEqual(elementToCompare, element)
+            | false, Ok(_, _) -> Assert.Fail(sprintf "Expected to NOT find match: %A" elementToCompare)
+            | false, Error _ -> Assert.Pass()
+            | _ -> Assert.Fail(sprintf "Expected %A" elementToCompare)
