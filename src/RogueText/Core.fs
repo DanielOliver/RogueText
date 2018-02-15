@@ -1,20 +1,33 @@
 namespace RogueText.Core
 
-[<RequireQualifiedAccess>]
-type Types =
+
+type FunctionArgument =
+    {   Name: string
+        Type: Types
+    }
+
+and [<RequireQualifiedAccess>] Types =
+    | Number
+    | Boolean
+    | String 
+    | Array of Types
+    | None
+    | Function of Arguments: FunctionArgument array * Result: Types
+    
+
+and [<RequireQualifiedAccess>] Values =
     | Number of decimal
     | Boolean of bool
     | String of string
-    | Array of Types array
-    | None
-    | Function of Arguments: Types array * Result: Types
-    
+    | Array of Values
+    | None    
+
 [<RequireQualifiedAccess>]
 type AccessModifier =
     | Public
     | Private
 
-type Attributes = Map<string, Types>
+type Attributes = Map<string, Values>
 
 type Variable =
     {   Name: string
@@ -47,7 +60,7 @@ and SentenceTree =
 
 type SentenceFunction =
     {   Name: string
-        Arguments: Types array
+        Arguments: FunctionArgument array
         Sentence: SentenceTree
         AccessModifier: AccessModifier
     }

@@ -5,6 +5,7 @@ open RogueText.Core
 open FLexer.Core
 open FLexer.Core.Tokenizer
 open FLexer.Core.ClassifierBuilder
+open FLexer.Core.Classifier
 
 
 /// ######  Lexer words & regex  ######
@@ -15,6 +16,7 @@ let LeftParentheses = Consumers.TakeChar '('
 let RightParentheses = Consumers.TakeChar ')'
 let AtSymbol = Consumers.TakeChar '@'
 let Colon = Consumers.TakeChar ':'
+let SemiColon = Consumers.TakeChar ';'
 let LeftArrow = Consumers.TakeChar '<'
 let RightArrow = Consumers.TakeChar '>'
 let ForwardSlash = Consumers.TakeChar '/'
@@ -37,6 +39,8 @@ let IDENTIFIER = Consumers.TakeRegex "[A-Za-z][A-Za-z0-9]*"
 [<RequireQualifiedAccess>]
 type TokenTypes =
     | Identifier of string
+    | FunctionName of string
+    | AttributeName of string
     | TextFragment
     | ElementName of string
     | AttributeLabel of string
@@ -92,17 +96,17 @@ let AcceptVariable status continuation =
 /// An attribute with a value (or no value), and a prepended space.
 let AcceptAttributeWithSpace status continuation =
     Classifiers.sub continuation {
-        let! (attributeLabel, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
+        let! (attributeLabel, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ])
 
         match Classifier.discard Colon status with
         | Ok(status) ->
             let! (attributeValue, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
 
-            return (attributeLabel, Types.String attributeValue), status
+            return (attributeLabel, Values.String attributeValue), status
 
         | Error _ ->
 
-            return (attributeLabel, Types.None), status
+            return (attributeLabel, Values.None), status
     }
 
 /// Multiple attributes with a value (or no value), and a prepended space.
@@ -169,7 +173,7 @@ let rec AcceptElement status continuation =
             
             let! status = Classifier.name TokenTypes.EndTag EndTag status
 
-            return { element with Fragments = children } |> SentenceTree.Element, status
+            return { element with Fragments = List.rev children } |> SentenceTree.Element, status
     }
     
 /// Wraps a text fragment in a tree union.
@@ -186,10 +190,50 @@ and AcceptElementChildren status continuation =
 
         return result
     }
+
+/// public
+let AcceptPublicModifier status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name (AccessModifier.Public |> TokenTypes.AccessModifier) PUBLIC status
+        return AccessModifier.Public, status
+    }
+
+/// private
+let AcceptPrivateModifier status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name (AccessModifier.Private |> TokenTypes.AccessModifier) PRIVATE status
+        return AccessModifier.Private, status
+    }
+
+/// public functionName(argument1: type) <element1>someText</element1>
+let AcceptFunction status continuation =
+    Classifiers.sub continuation {
+        let! (accessModifier, status) = PickOne(status, [ AcceptPublicModifier; AcceptPrivateModifier ])
+        
+        let! status = Classifier.discard WHITESPACE status
+        
+        let! (functionName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ])
+        
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        let! (sentence, status) = AcceptElement status
+
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        let! status = Classifier.discard SemiColon status
+
+        return {
+            SentenceFunction.AccessModifier = accessModifier
+            SentenceFunction.Name = functionName
+            SentenceFunction.Sentence = sentence
+            SentenceFunction.Arguments = Array.empty
+        }, status
+
+    }
     
 let Root status =
     Classifiers.root() {
-        let! (value, status) = AcceptElement status
+        let! (value, status) = AcceptFunction status
         return value, status
     }
 
