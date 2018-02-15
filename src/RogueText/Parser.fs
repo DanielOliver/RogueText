@@ -14,12 +14,15 @@ let CurlyRightBracket = Consumers.TakeChar '}'
 let LeftParentheses = Consumers.TakeChar '('
 let RightParentheses = Consumers.TakeChar ')'
 let AtSymbol = Consumers.TakeChar '@'
+let Colon = Consumers.TakeChar ':'
 let LeftArrow = Consumers.TakeChar '<'
 let RightArrow = Consumers.TakeChar '>'
 let ForwardSlash = Consumers.TakeChar '/'
 
 let TRUE = Consumers.TakeWord "true" true
 let FALSE = Consumers.TakeWord "false" true
+let PUBLIC = Consumers.TakeWord "public" true
+let PRIVATE = Consumers.TakeWord "private" true
 let EndTag = Consumers.TakeWord "</>" true
 let StartTagClose = Consumers.TakeWord "/>" true
 
@@ -36,10 +39,12 @@ type TokenTypes =
     | Identifier of string
     | TextFragment
     | ElementName of string
+    | AttributeLabel of string
     | StartTagOpen
     | StartTagEnd
     | StartTagClosed
     | EndTag
+    | AccessModifier of AccessModifier
 
 
 /// ######  Primitive Parser Functions  ######
@@ -84,18 +89,46 @@ let AcceptVariable status continuation =
         return variable, status
     }
 
+/// An attribute with a value (or no value), and a prepended space.
+let AcceptAttributeWithSpace status continuation =
+    Classifiers.sub continuation {
+        let! (attributeLabel, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
+
+        match Classifier.discard Colon status with
+        | Ok(status) ->
+            let! (attributeValue, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
+
+            return (attributeLabel, Types.String attributeValue), status
+
+        | Error _ ->
+
+            return (attributeLabel, Types.None), status
+    }
+
+/// Multiple attributes with a value (or no value), and a prepended space.
+let AcceptMultipleAttributes status continuation =
+    Classifiers.sub continuation {
+        let! (items, status) = ZeroOrMore(status, AcceptAttributeWithSpace)
+
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        return items |> Map.ofList, status
+    }
+
 /// \<elementName>
 let AcceptOpenStartTag status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.StartTagOpen LeftArrow status
 
         let! (elementName, status) = AcceptIdentifier TokenTypes.ElementName status
+
+        let! (attributes, status) = AcceptMultipleAttributes status
         
         let! status = Classifier.name TokenTypes.StartTagEnd RightArrow status
 
         let element: RogueText.Core.Element =
             {   Name = elementName
-                Attributes = Map.empty
+                Attributes = attributes
                 Fragments = List.empty
             }
 
@@ -109,11 +142,13 @@ let AcceptClosedStartTag status continuation =
 
         let! (tagName, status) = AcceptIdentifier TokenTypes.ElementName status
         
+        let! (attributes, status) = AcceptMultipleAttributes status
+        
         let! status = Classifier.name TokenTypes.StartTagClosed StartTagClose status
         
         let element: RogueText.Core.Element =
             {   Name = tagName
-                Attributes = Map.empty
+                Attributes = attributes
                 Fragments = List.empty
             }
 
@@ -125,7 +160,7 @@ let rec AcceptElement status continuation =
     Classifiers.sub continuation {
         match AcceptClosedStartTag status Continuation.None with
         | Ok(element, status) ->
-            return element |> Tree.Element, status
+            return element |> SentenceTree.Element, status
 
         | Error _ ->
             let! (element, status) = AcceptOpenStartTag status
@@ -134,14 +169,14 @@ let rec AcceptElement status continuation =
             
             let! status = Classifier.name TokenTypes.EndTag EndTag status
 
-            return { element with Fragments = children } |> Tree.Element, status
+            return { element with Fragments = children } |> SentenceTree.Element, status
     }
     
 /// Wraps a text fragment in a tree union.
 and AcceptTextFragmentAsTree status continuation =
     Classifiers.sub continuation {
         let! (cleanText, status) = AcceptTextFragment status
-        return cleanText |> Tree.Text, status
+        return cleanText |> SentenceTree.Text, status
     }
 
 /// Accepts either an element, text fragment, or word.
