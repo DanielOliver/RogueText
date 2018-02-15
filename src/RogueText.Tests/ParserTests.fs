@@ -85,6 +85,7 @@ type ParserTests () =
 
         let testFragments = 
             [   true, "public functionName <elementName/>;", emptyFunction "functionName"
+                true, "public functionName(testArg: string) <elementName/>;", { emptyFunction "functionName" with Arguments = [| { FunctionArgument.Name = "testArg"; FunctionArgument.Type = Types.String } |] }
                 true, "private func123 <elementName> four <subElement234/></>;", { emptyFunction "func123" with SentenceFunction.AccessModifier = AccessModifier.Private; SentenceFunction.Sentence = SentenceTree.Element( { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  } ) }
             ] 
             |> List.map (fun (shouldAccept, text, functionToCompare) -> shouldAccept, (text |> FLexer.Core.ClassifierStatus<string>.OfString), functionToCompare)

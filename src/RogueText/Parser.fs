@@ -41,6 +41,8 @@ type TokenTypes =
     | Identifier of string
     | FunctionName of string
     | AttributeName of string
+    | ArgumentType
+    | FunctionArgument of string
     | TextFragment
     | ElementName of string
     | AttributeLabel of string
@@ -49,10 +51,7 @@ type TokenTypes =
     | StartTagClosed
     | EndTag
     | AccessModifier of AccessModifier
-
-
-/// ######  Primitive Parser Functions  ######
-
+    
 /// Any text up to Curly Left Bracket or LeftArrow
 let AcceptTextFragment status continuation =
     Classifiers.sub continuation {
@@ -204,6 +203,34 @@ let AcceptPrivateModifier status continuation =
         let! status = Classifier.name (AccessModifier.Private |> TokenTypes.AccessModifier) PRIVATE status
         return AccessModifier.Private, status
     }
+        
+/// argumentName: string
+let AcceptFunctionArgument status continuation =
+    Classifiers.sub continuation {
+        let! (argumentName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.FunctionArgument; AcceptIdentifier TokenTypes.FunctionArgument ])
+        
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! status = Classifier.discard Colon status
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        let! status = Classifier.name TokenTypes.ArgumentType (Consumers.TakeWord "string" false) status
+        let functionType = status.ConsumedText
+        return {
+            FunctionArgument.Name = argumentName
+            FunctionArgument.Type = Types.String         
+        }, status
+
+    }
+
+/// (argument1: type)
+let AcceptFunctionArgumentList status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.discard LeftParentheses status
+        let! (argument, status) = AcceptFunctionArgument status
+            
+        let! status = Classifier.discard RightParentheses status
+        return Array.ofSeq [ argument ], status        
+    }
 
 /// public functionName(argument1: type) <element1>someText</element1>
 let AcceptFunction status continuation =
@@ -212,8 +239,12 @@ let AcceptFunction status continuation =
         
         let! status = Classifier.discard WHITESPACE status
         
-        let! (functionName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ])
+        let! (functionName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.FunctionName; AcceptIdentifier TokenTypes.FunctionName ])
         
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        let! (argumentList, status) = ZeroOrOne(status, AcceptFunctionArgumentList)
+
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
         let! (sentence, status) = AcceptElement status
@@ -226,7 +257,7 @@ let AcceptFunction status continuation =
             SentenceFunction.AccessModifier = accessModifier
             SentenceFunction.Name = functionName
             SentenceFunction.Sentence = sentence
-            SentenceFunction.Arguments = Array.empty
+            SentenceFunction.Arguments = argumentList |> Option.defaultValue Array.empty
         }, status
     }
 
