@@ -94,7 +94,7 @@ let AcceptVariable status continuation =
     }
 
 /// An attribute with a value (or no value), and a prepended space.
-let AcceptAttributeWithSpace status continuation =
+let AcceptWhitespaceBeforeAttribute status continuation =
     Classifiers.sub continuation {
         let! (attributeLabel, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ])
 
@@ -112,7 +112,7 @@ let AcceptAttributeWithSpace status continuation =
 /// Multiple attributes with a value (or no value), and a prepended space.
 let AcceptMultipleAttributes status continuation =
     Classifiers.sub continuation {
-        let! (items, status) = ZeroOrMore(status, AcceptAttributeWithSpace)
+        let! (items, status) = ZeroOrMore(status, AcceptWhitespaceBeforeAttribute)
 
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
@@ -228,12 +228,28 @@ let AcceptFunction status continuation =
             SentenceFunction.Sentence = sentence
             SentenceFunction.Arguments = Array.empty
         }, status
+    }
 
+/// Accept whitespace before functions
+let AcceptWhitespaceBeforeFunction status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! result = AcceptFunction status
+        return result
+    }
+
+/// Accept list of functions
+let AcceptFunctionList status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! (functions, status) = ZeroOrMore(status, AcceptWhitespaceBeforeFunction)
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        return List.rev functions, status
     }
     
 let Root status =
     Classifiers.root() {
-        let! (value, status) = AcceptFunction status
+        let! (value, status) = AcceptFunctionList status
         return value, status
     }
 

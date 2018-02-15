@@ -98,3 +98,25 @@ type ParserTests () =
             | false, Ok(_, _) -> Assert.Fail(sprintf "Expected to NOT find match: %A" functionToCompare)
             | false, Error _ -> Assert.Pass()
             | _ -> Assert.Fail(sprintf "Expected %A" functionToCompare)
+    
+    [<Test>]    
+    member this.TestRoot () =
+        let emptyElement name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  }
+        let emptySentence name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  } |> SentenceTree.Element
+        let emptyFunction name = { SentenceFunction.Name = name; SentenceFunction.AccessModifier = AccessModifier.Public; SentenceFunction.Arguments = Array.empty; SentenceFunction.Sentence = (emptySentence "elementName") }
+
+        let testFragments = 
+            [   true, "public functionName <elementName/>;",[ emptyFunction "functionName" ]
+                true, "private func123 <elementName> four <subElement234/></>;", [ { emptyFunction "func123" with SentenceFunction.AccessModifier = AccessModifier.Private; SentenceFunction.Sentence = SentenceTree.Element( { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  } ) } ]
+            ] 
+            |> List.map (fun (shouldAccept, text, functionToCompare) -> shouldAccept, (text |> FLexer.Core.ClassifierStatus<string>.OfString), functionToCompare)
+
+        for (shouldAccept, fragment, functionToCompare) in testFragments do
+
+            let fragmentResult = RogueText.Parser.Root fragment
+        
+            match shouldAccept, fragmentResult with
+            | true, Ok(item, _) -> Assert.AreEqual(functionToCompare, item)
+            | false, Ok(_, _) -> Assert.Fail(sprintf "Expected to NOT find match: %A" functionToCompare)
+            | false, Error _ -> Assert.Pass()
+            | _ -> Assert.Fail(sprintf "Expected %A" functionToCompare)
