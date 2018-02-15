@@ -13,4 +13,8 @@
     <ProjectReference Include="..\RogueText\RogueText.fsproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.3.4" />
+  </ItemGroup>
+
 </Project>

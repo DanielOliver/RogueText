@@ -19,7 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FLexer" Version="0.1.3" />
+    <PackageReference Include="FLexer" Version="0.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="4.3.4" />
   </ItemGroup>
 
 </Project>

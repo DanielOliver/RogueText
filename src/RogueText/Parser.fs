@@ -4,7 +4,6 @@
 open RogueText.Core
 open FLexer.Core
 open FLexer.Core.Tokenizer
-open FLexer.Core.ClassifierBuilder
 open FLexer.Core.Classifier
 
 
@@ -87,7 +86,7 @@ let AcceptVariable status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.discard AtSymbol status
 
-        let! (variable, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
+        let! (variable, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ] status
 
         return variable, status
     }
@@ -95,11 +94,11 @@ let AcceptVariable status continuation =
 /// An attribute with a value (or no value), and a prepended space.
 let AcceptWhitespaceBeforeAttribute status continuation =
     Classifiers.sub continuation {
-        let! (attributeLabel, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ])
+        let! (attributeLabel, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.AttributeName ] status
 
         match Classifier.discard Colon status with
         | Ok(status) ->
-            let! (attributeValue, status) = PickOne(status, [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ])
+            let! (attributeValue, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ] status
 
             return (attributeLabel, Values.String attributeValue), status
 
@@ -111,7 +110,7 @@ let AcceptWhitespaceBeforeAttribute status continuation =
 /// Multiple attributes with a value (or no value), and a prepended space.
 let AcceptMultipleAttributes status continuation =
     Classifiers.sub continuation {
-        let! (items, status) = ZeroOrMore(status, AcceptWhitespaceBeforeAttribute)
+        let! (items, status) = ClassifierFunction.ZeroOrMore AcceptWhitespaceBeforeAttribute status
 
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
@@ -168,11 +167,11 @@ let rec AcceptElement status continuation =
         | Error _ ->
             let! (element, status) = AcceptOpenStartTag status
 
-            let! (children, status) = ZeroOrMore(status, AcceptElementChildren)
+            let! (children, status) = ClassifierFunction.ZeroOrMore AcceptElementChildren status
             
             let! status = Classifier.name TokenTypes.EndTag EndTag status
 
-            return { element with Fragments = List.rev children } |> SentenceTree.Element, status
+            return { element with Fragments = children } |> SentenceTree.Element, status
     }
     
 /// Wraps a text fragment in a tree union.
@@ -185,7 +184,7 @@ and AcceptTextFragmentAsTree status continuation =
 /// Accepts either an element, text fragment, or word.
 and AcceptElementChildren status continuation = 
     Classifiers.sub continuation {
-        let! result = PickOne(status, [ AcceptElement; AcceptTextFragmentAsTree ])
+        let! result = ClassifierFunction.PickOne [ AcceptElement; AcceptTextFragmentAsTree ] status
 
         return result
     }
@@ -207,7 +206,7 @@ let AcceptPrivateModifier status continuation =
 /// argumentName: string
 let AcceptFunctionArgument status continuation =
     Classifiers.sub continuation {
-        let! (argumentName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.FunctionArgument; AcceptIdentifier TokenTypes.FunctionArgument ])
+        let! (argumentName, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.FunctionArgument; AcceptIdentifier TokenTypes.FunctionArgument ] status
         
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
         let! status = Classifier.discard Colon status
@@ -235,15 +234,15 @@ let AcceptFunctionArgumentList status continuation =
 /// public functionName(argument1: type) <element1>someText</element1>
 let AcceptFunction status continuation =
     Classifiers.sub continuation {
-        let! (accessModifier, status) = PickOne(status, [ AcceptPublicModifier; AcceptPrivateModifier ])
+        let! (accessModifier, status) = ClassifierFunction.PickOne [ AcceptPublicModifier; AcceptPrivateModifier ] status
         
         let! status = Classifier.discard WHITESPACE status
         
-        let! (functionName, status) = PickOne(status, [ AcceptQuotedString TokenTypes.FunctionName; AcceptIdentifier TokenTypes.FunctionName ])
+        let! (functionName, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.FunctionName; AcceptIdentifier TokenTypes.FunctionName ] status
         
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
-        let! (argumentList, status) = ZeroOrOne(status, AcceptFunctionArgumentList)
+        let! (argumentList, status) = ClassifierFunction.ZeroOrOne AcceptFunctionArgumentList status
 
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
@@ -273,9 +272,9 @@ let AcceptWhitespaceBeforeFunction status continuation =
 let AcceptFunctionList status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
-        let! (functions, status) = ZeroOrMore(status, AcceptWhitespaceBeforeFunction)
+        let! (functions, status) = ClassifierFunction.ZeroOrMore AcceptWhitespaceBeforeFunction status
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
-        return List.rev functions, status
+        return functions, status
     }
     
 let Root status =
