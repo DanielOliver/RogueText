@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FLexer" Version="0.1.4" />
+    <PackageReference Include="FLexer" Version="0.1.5" />
   </ItemGroup>
 
   <ItemGroup>
