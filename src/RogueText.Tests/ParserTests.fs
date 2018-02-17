@@ -109,6 +109,9 @@ type ParserTests () =
         let testFragments = 
             [   true, "public functionName <elementName/>;",[ emptyFunction "functionName" ]
                 true, "private func123 <elementName> four <subElement234/></>;", [ { emptyFunction "func123" with SentenceFunction.AccessModifier = AccessModifier.Private; SentenceFunction.Sentence = SentenceTree.Element( { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  } ) } ]
+                true, "func123 <elementName> four <subElement234/></>;", [ { emptyFunction "func123" with SentenceFunction.AccessModifier = AccessModifier.Private; SentenceFunction.Sentence = SentenceTree.Element( { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  } ) } ]
+                true, "public func123 <elementName> four <subElement234/></>;", [ { emptyFunction "func123" with SentenceFunction.AccessModifier = AccessModifier.Public; SentenceFunction.Sentence = SentenceTree.Element( { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  } ) } ]
+                true, "public functionName <elementName/>;    public func234 <elementName/>;  ",[ emptyFunction "functionName"; emptyFunction "func234" ]
             ] 
             |> List.map (fun (shouldAccept, text, functionToCompare) -> shouldAccept, (text |> FLexer.Core.ClassifierStatus<string>.OfString), functionToCompare)
 

@@ -193,6 +193,9 @@ and AcceptElementChildren status continuation =
 let AcceptPublicModifier status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name (AccessModifier.Public |> TokenTypes.AccessModifier) PUBLIC status
+        
+        let! status = Classifier.discard WHITESPACE status
+
         return AccessModifier.Public, status
     }
 
@@ -200,6 +203,9 @@ let AcceptPublicModifier status continuation =
 let AcceptPrivateModifier status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name (AccessModifier.Private |> TokenTypes.AccessModifier) PRIVATE status
+        
+        let! status = Classifier.discard WHITESPACE status
+
         return AccessModifier.Private, status
     }
         
@@ -230,13 +236,11 @@ let AcceptFunctionArgumentList status continuation =
         let! status = Classifier.discard RightParentheses status
         return Array.ofSeq [ argument ], status        
     }
-
+    
 /// public functionName(argument1: type) <element1>someText</element1>
 let AcceptFunction status continuation =
     Classifiers.sub continuation {
-        let! (accessModifier, status) = ClassifierFunction.PickOne [ AcceptPublicModifier; AcceptPrivateModifier ] status
-        
-        let! status = Classifier.discard WHITESPACE status
+        let! (accessModifier, status) = ClassifierFunction.ZeroOrOne (ClassifierFunction.PickOne [ AcceptPublicModifier; AcceptPrivateModifier ]) status
         
         let! (functionName, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.FunctionName; AcceptIdentifier TokenTypes.FunctionName ] status
         
@@ -253,7 +257,7 @@ let AcceptFunction status continuation =
         let! status = Classifier.discard SemiColon status
 
         return {
-            SentenceFunction.AccessModifier = accessModifier
+            SentenceFunction.AccessModifier = Option.defaultValue AccessModifier.Private accessModifier
             SentenceFunction.Name = functionName
             SentenceFunction.Sentence = sentence
             SentenceFunction.Arguments = argumentList |> Option.defaultValue Array.empty
