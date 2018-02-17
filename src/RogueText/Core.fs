@@ -12,15 +12,16 @@ and [<RequireQualifiedAccess>] Types =
     | String 
     | Array of Types
     | None
+    | Option of Type: Types
     | Function of Arguments: FunctionArgument array * Result: Types
-    
 
 and [<RequireQualifiedAccess>] Values =
     | Number of decimal
     | Boolean of bool
     | String of string
     | Array of Values
-    | None    
+    | Option of Values
+    | None
 
 [<RequireQualifiedAccess>]
 type AccessModifier =

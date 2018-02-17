@@ -5,6 +5,7 @@ open RogueText.Core
 open FLexer.Core
 open FLexer.Core.Tokenizer
 open FLexer.Core.Classifier
+open System
 
 
 /// ######  Lexer words & regex  ######
@@ -19,6 +20,7 @@ let SemiColon = Consumers.TakeChar ';'
 let LeftArrow = Consumers.TakeChar '<'
 let RightArrow = Consumers.TakeChar '>'
 let ForwardSlash = Consumers.TakeChar '/'
+let Comma = Consumers.TakeChar ','
 
 let TRUE = Consumers.TakeWord "true" true
 let FALSE = Consumers.TakeWord "false" true
@@ -35,8 +37,15 @@ let NumberRegex = Consumers.TakeRegex "([-]){0,1}[0-9]+([.]([0-9])+){0,1}"
 let IDENTIFIER = Consumers.TakeRegex "[A-Za-z][A-Za-z0-9]*"
 
 
+let TYPE_STRING = Consumers.TakeWord "string" true
+let TYPE_BOOL = Consumers.TakeWord "bool" true
+let TYPE_NUMBER = Consumers.TakeWord "number" true
+let TYPE_ARRAY = Consumers.TakeWord "array" true
+let TYPE_OPTION = Consumers.TakeWord "option" true
+
 [<RequireQualifiedAccess>]
 type TokenTypes =
+    | Type of string
     | Identifier of string
     | FunctionName of string
     | AttributeName of string
@@ -50,6 +59,60 @@ type TokenTypes =
     | StartTagClosed
     | EndTag
     | AccessModifier of AccessModifier
+    
+
+/// number, string, bool
+let AcceptBaseTypeDefinition status continuation =
+    Classifiers.sub continuation {
+        let! (text, status) = ClassifierFunction.PickOneConsumer ([ TYPE_STRING; TYPE_BOOL; TYPE_NUMBER ] |> List.map (Classifier.map TokenTypes.Type)) status
+
+        match text.ToLower() with 
+        | "number" ->
+            return Types.Number, status
+        | "string" -> 
+            return Types.String, status
+        | "bool" -> 
+            return Types.Boolean, status
+        | _ ->
+            // Return nothing, so an error
+            return! status
+    }
+    
+let AcceptModifierTypeDefinition baseType status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.discard WHITESPACE status
+
+        let! (text, status) = ClassifierFunction.PickOneConsumer ([ TYPE_ARRAY; TYPE_OPTION ] |> List.map (Classifier.map TokenTypes.Type)) status
+
+        match text.ToLower() with 
+        | "array" ->
+            return Types.Array baseType, status
+        | "option" -> 
+            return Types.Option baseType, status
+        | _ ->
+            // Return nothing, so an error
+            return! status
+    }
+
+let rec AcceptRecursiveTypeDefinition baseType firstStatus continuation =
+    Classifiers.sub continuation {
+        let! (value, status) = ClassifierFunction.ZeroOrOne (AcceptModifierTypeDefinition baseType) firstStatus
+        match value with
+        | None ->
+            return baseType, firstStatus
+        | Some nextType ->
+            return! AcceptRecursiveTypeDefinition nextType status
+    }
+
+    
+let AcceptFullTypeDefinition status continuation =
+    Classifiers.sub continuation {        
+        let! (baseType, status) = AcceptBaseTypeDefinition status
+        let! (finalType, status) = AcceptRecursiveTypeDefinition baseType status
+
+        return finalType, status
+
+    }
     
 /// Any text up to Curly Left Bracket or LeftArrow
 let AcceptTextFragment status continuation =
@@ -218,23 +281,37 @@ let AcceptFunctionArgument status continuation =
         let! status = Classifier.discard Colon status
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
-        let! status = Classifier.name TokenTypes.ArgumentType (Consumers.TakeWord "string" false) status
-        let functionType = status.ConsumedText
+        let! (typeDefinition, status) = AcceptFullTypeDefinition status
+
         return {
             FunctionArgument.Name = argumentName
-            FunctionArgument.Type = Types.String         
+            FunctionArgument.Type = typeDefinition
         }, status
 
     }
 
+let AcceptMoreFunctionArguments status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! status = Classifier.discard Comma status
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        return! AcceptFunctionArgument status
+    }
+
 /// (argument1: type)
-let AcceptFunctionArgumentList status continuation =
+let rec AcceptFunctionArgumentList status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.discard LeftParentheses status
+
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
         let! (argument, status) = AcceptFunctionArgument status
             
+        let! (moreArguments, status) = ClassifierFunction.ZeroOrMore AcceptMoreFunctionArguments status
+
+            
         let! status = Classifier.discard RightParentheses status
-        return Array.ofSeq [ argument ], status        
+        return Array.ofList (argument :: moreArguments), status
     }
     
 /// public functionName(argument1: type) <element1>someText</element1>
