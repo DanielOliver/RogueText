@@ -5,6 +5,14 @@ open RogueText.Core
 
 [<ParserTests>]
 type ParserTests () =
+    let emptyElement (name: string) = 
+        let elementName = 
+            match name.ToLower() with
+            | "text" -> ElementName.Text "text"
+            | _ -> ElementName.FunctionCall { FunctionCall.Name = name; Arguments = List.empty }
+        { Element.Name = elementName; Attributes = Map.empty; Fragments = List.empty  }
+
+
 
     [<Test>]
     member this.TestTextFragment () =
@@ -53,13 +61,12 @@ type ParserTests () =
             
     [<Test>]
     member this.TestElement () =
-        let emptyElement name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  }
 
         let testFragments = 
             [   true, "<elementName/>", emptyElement "elementName"
                 true, "<elementName></>", emptyElement "elementName"
                 true, "<elementName>four</>", { emptyElement "elementName" with Fragments = [ SentenceTree.Text "four" ]  }
-                false, "<elementName>four", { Element.Name = ""; Attributes = Map.empty; Fragments = List.empty  }
+                false, "<elementName>four", emptyElement ""
                 true, "<elementName> four <subElement234/> </>", { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element(emptyElement "subElement234") ]  }
                 true, "<elementName> four <subElement234> <sub234/> </> </>", { emptyElement "elementName" with Fragments = [ SentenceTree.Text " four "; SentenceTree.Element({emptyElement "subElement234" with Fragments = [ SentenceTree.Element(emptyElement "sub234") ] }) ] }
                 true, "<elementName attribute1  \"nextAttribute\":someValue/>", { emptyElement "elementName" with Attributes = (Map.ofList [ "attribute1", Values.None; "nextAttribute", Values.String "someValue" ]) }
@@ -79,8 +86,7 @@ type ParserTests () =
 
     [<Test>]
     member this.TestFunction () =
-        let emptyElement name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  }
-        let emptySentence name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  } |> SentenceTree.Element
+        let emptySentence name = emptyElement name |> SentenceTree.Element
         let emptyFunction name = { SentenceFunction.Name = name; SentenceFunction.AccessModifier = AccessModifier.Public; SentenceFunction.Arguments = Array.empty; SentenceFunction.Sentence = (emptySentence "elementName") }
 
         let testFragments = 
@@ -102,8 +108,7 @@ type ParserTests () =
     
     [<Test>]    
     member this.TestRoot () =
-        let emptyElement name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  }
-        let emptySentence name = { Element.Name = name; Attributes = Map.empty; Fragments = List.empty  } |> SentenceTree.Element
+        let emptySentence name = emptyElement name |> SentenceTree.Element
         let emptyFunction name = { SentenceFunction.Name = name; SentenceFunction.AccessModifier = AccessModifier.Public; SentenceFunction.Arguments = Array.empty; SentenceFunction.Sentence = (emptySentence "elementName") }
 
         let testFragments = 

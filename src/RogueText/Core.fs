@@ -36,7 +36,7 @@ type Variable =
 
 type FunctionCall =
     {   Name: string
-        Arguments: Map<string, Argument>
+        Arguments: Argument list
     }
     
 and [<RequireQualifiedAccess>] Argument =
@@ -48,10 +48,14 @@ and WordFragment =
         Attributes: Attributes
     }
 
+and [<RequireQualifiedAccess>] ElementName =
+    | Text of string
+    | FunctionCall of FunctionCall
+
 and Element = 
     {   Fragments: SentenceTree list
         Attributes: Attributes
-        Name: string
+        Name: ElementName
     }
 
 and SentenceTree =

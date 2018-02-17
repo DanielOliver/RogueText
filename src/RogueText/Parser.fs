@@ -30,6 +30,7 @@ let EndTag = Consumers.TakeWord "</>" true
 let StartTagClose = Consumers.TakeWord "/>" true
 
 let StringLiteral = Consumers.TakeRegex "([\\\\][\"]|[^\"])*"
+let NumberLiteral = Consumers.TakeRegex "[0-9]([.][0-9){0,1})"
 let TextFragment = Consumers.TakeRegex @"([\\][<]|[\\][{]|[^<{])+"
 let WHITESPACE = Consumers.TakeRegex @"(\s|[\r\n])+"
 let OPTIONAL_WHITESPACE = Consumers.TakeRegex @"(\s|[\r\n])*"
@@ -161,7 +162,7 @@ let AcceptWhitespaceBeforeAttribute status continuation =
 
         match Classifier.discard Colon status with
         | Ok(status) ->
-            let! (attributeValue, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ] status
+            let! (attributeValue, status) = AcceptVariable status
 
             return (attributeLabel, Values.String attributeValue), status
 
@@ -180,12 +181,26 @@ let AcceptMultipleAttributes status continuation =
         return items |> Map.ofList, status
     }
 
+/// elementName or functionCall
+let rec AcceptElementName status continuation =
+    Classifiers.sub continuation {
+        let! (tagName, status) = ClassifierFunction.PickOne [ AcceptQuotedString TokenTypes.Identifier; AcceptIdentifier TokenTypes.Identifier ] status
+        match tagName.ToLower() with
+        | "text" as x -> 
+            return (ElementName.Text x), status
+        | _ ->
+            return {
+                FunctionCall.Name = tagName
+                Arguments = List.empty
+            } |> ElementName.FunctionCall, status
+    }
+
 /// \<elementName>
 let AcceptOpenStartTag status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.StartTagOpen LeftArrow status
 
-        let! (elementName, status) = AcceptIdentifier TokenTypes.ElementName status
+        let! (elementName, status) = AcceptElementName status
 
         let! (attributes, status) = AcceptMultipleAttributes status
         
@@ -205,14 +220,14 @@ let AcceptClosedStartTag status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.StartTagOpen LeftArrow status
 
-        let! (tagName, status) = AcceptIdentifier TokenTypes.ElementName status
+        let! (elementName, status) = AcceptElementName status
         
         let! (attributes, status) = AcceptMultipleAttributes status
         
         let! status = Classifier.name TokenTypes.StartTagClosed StartTagClose status
         
         let element: RogueText.Core.Element =
-            {   Name = tagName
+            {   Name = elementName
                 Attributes = attributes
                 Fragments = List.empty
             }
@@ -308,7 +323,7 @@ let rec AcceptFunctionArgumentList status continuation =
         let! (argument, status) = AcceptFunctionArgument status
             
         let! (moreArguments, status) = ClassifierFunction.ZeroOrMore AcceptMoreFunctionArguments status
-
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
             
         let! status = Classifier.discard RightParentheses status
         return Array.ofList (argument :: moreArguments), status
