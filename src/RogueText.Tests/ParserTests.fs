@@ -114,7 +114,7 @@ type ParserTests () =
                 true, "public functionName <elementName/>;    public func234 <elementName/>;  ",[ emptyFunction "functionName"; emptyFunction "func234" ]
                 true, "public functionName(arg1: string) <elementName/>;", [ { emptyFunction "functionName" with SentenceFunction.Arguments = [| { FunctionArgument.Name = "arg1"; Type = Types.String } |] } ]
                 true, "public functionName(arg1: string, arg2: bool) <elementName/>;", [ { emptyFunction "functionName" with SentenceFunction.Arguments = [| { FunctionArgument.Name = "arg1"; Type = Types.String }; { FunctionArgument.Name = "arg2"; Type = Types.Boolean } |] } ]
-                true, "public functionName(arg1: string, arg2: bool array) <elementName/>;", [ { emptyFunction "functionName" with SentenceFunction.Arguments = [| { FunctionArgument.Name = "arg1"; Type = Types.String }; { FunctionArgument.Name = "arg2"; Type = Types.Array (Types.Boolean) } |] } ]
+                true, "public functionName(arg1: string array, arg2: bool array option) <elementName/>;", [ { emptyFunction "functionName" with SentenceFunction.Arguments = [| { FunctionArgument.Name = "arg1"; Type = Types.Array (Types.String) }; { FunctionArgument.Name = "arg2"; Type = Types.Option (Types.Array (Types.Boolean)) } |] } ]
             ] 
             |> List.map (fun (shouldAccept, text, functionToCompare) -> shouldAccept, (text |> FLexer.Core.ClassifierStatus<string>.OfString), functionToCompare)
 
