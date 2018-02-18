@@ -183,6 +183,7 @@ let rec AcceptListValue status continuation =
 
 
 // ########### BEGIN LISP ###########
+/// ModuleName.functionName   OR   functionName
 and AcceptLispMethodName status continuation = 
     Classifiers.sub continuation {
         let! (moduleName, status) = 
@@ -194,7 +195,7 @@ and AcceptLispMethodName status continuation =
         let! (functionName, status) = AcceptIdentifier status
         return FunctionCallType.Method(functionName, moduleName), status
     }
-
+/// (ModuleName.functionName arg1 arg2)
 and AcceptLispFunctionCall status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.FunctionStart LeftParentheses status
@@ -216,16 +217,17 @@ and AcceptLispFunctionCall status continuation =
             FunctionCall.Parameters = items
         }, status
     }
-
+/// Wrap as a Values.FunctionCall
 and AcceptLispFunctionCallValue status continuation =
     MapValue Values.FunctionCall AcceptLispFunctionCall status continuation
-
+/// A function, variable, number, string, or boolean
 and AcceptAssignmentValue status continuation =
         ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
 // ########### END LISP ###########
 
 
 // ########### BEGIN ATTRIBUTE ###########
+///  attribute1: someValue    OR    attribute1Value
 and AcceptAttributeAssignment status continuation =
     Classifiers.sub continuation {
         let! (attributeName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
@@ -244,13 +246,14 @@ and AcceptAttributeAssignment status continuation =
 
 
 // ########### BEGIN ELEMENT ###########
+/// Everything before curly brace {
 and AcceptFragmentText status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.TextFragment TextFragment status
         let cleanedText = status.ConsumedText.Replace(@"\{", "{").Replace(@"\<", "<")
         return cleanedText, status
     }
-
+///  \<@ attributes> some text </>
 and AcceptElementText status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
@@ -276,6 +279,7 @@ and AcceptElementText status continuation =
         }, status
     }
 
+///  \<(methodName arg1) attributes/>
 and AcceptElementFunction status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
@@ -288,7 +292,7 @@ and AcceptElementFunction status continuation =
                             AcceptQuotedString
                             AcceptIdentifier 
                         ] |> MapValue (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
-                    AcceptLispFunctionCall 
+                    AcceptLispFunctionCall
                 ]
             |> MapValue ElementType.FunctionCall
             <| status
@@ -308,7 +312,7 @@ and AcceptElementFunction status continuation =
             Element.Fragments = []
         }, status
     }
-
+///  \<(methodName arg1) attributes/> some text <@ attributes> more  text </>
 and AcceptFragmentsTree status continuation =
     ZeroOrMore (
         ClassifierFunction.PickOne
