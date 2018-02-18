@@ -57,6 +57,9 @@ type TokenTypes =
     | ArrayEnd
     | ElementStart
     | ElementEnd
+    | TextFragment
+    | FunctionStart
+    | FunctionEnd
 
 
 // ########### BEGIN UTILITY ###########
@@ -179,10 +182,8 @@ let rec AcceptListValue status continuation =
 // ########### END PRIMITIVES ###########
 
 // ########### BEGIN LISP ###########
-let rec AcceptLispFunctionCall status continuation =
+let rec AcceptLispMethodName status continuation = 
     Classifiers.sub continuation {
-        let! status = Classifier.name TokenTypes.ArrayStart LeftParentheses status
-        let! status = Classifier.name TokenTypes.ArrayStart OPTIONAL_WHITESPACE status
         let! (moduleName, status) = 
             ClassifierFunction.ZeroOrOne(
                 AcceptIdentifier
@@ -190,24 +191,36 @@ let rec AcceptLispFunctionCall status continuation =
             ) status
 
         let! (functionName, status) = AcceptIdentifier status
+        return FunctionMethod.Method(functionName, moduleName), status
+    }
+
+let rec AcceptLispFunctionCall status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name TokenTypes.FunctionStart LeftParentheses status
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+
+        let! (functionMethod, status) =
+            ClassifierFunction.PickOne [ AcceptLispMethodName; MapValue FunctionMethod.FunctionCall AcceptLispFunctionCall ] status
         
         let! (items, status) =
             ZeroOrMore (                
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCall; AcceptVariableValue ]
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue ]
                 |> WithDiscardBefore WHITESPACE
             ) status
 
-        let! status = Classifier.name TokenTypes.ArrayStart OPTIONAL_WHITESPACE status
-        let! status = Classifier.name TokenTypes.ArrayStart RightParentheses status
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! status = Classifier.name TokenTypes.FunctionEnd RightParentheses status
         return {
-            FunctionCall.Module = moduleName
-            FunctionCall.Name = functionName
+            FunctionCall.Method = functionMethod
             FunctionCall.Parameters = items
-        } |> Values.FunctionCall, status
+        }, status
     }
 
+and AcceptLispFunctionCallValue status continuation =
+    MapValue Values.FunctionCall AcceptLispFunctionCall status continuation
+
 let AcceptAssignmentValue status continuation =
-        ClassifierFunction.PickOne [ AcceptLispFunctionCall; AcceptListValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
+        ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
 // ########### END LISP ###########
 
 
@@ -230,26 +243,67 @@ let AcceptAttributeAssignment status continuation =
 
 
 // ########### BEGIN ELEMENT ###########
-let AcceptStartElement status continuation =
+let AcceptFragmentText status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name TokenTypes.TextFragment TextFragment status
+        let cleanedText = status.ConsumedText.Replace(@"\{", "{").Replace(@"\<", "<")
+        return cleanedText, status
+    }
+
+let rec AcceptElementText status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
+        let! status = Classifier.discard AtSymbol status
+
+        let! (attributes, status) =
+            ZeroOrMore (
+                AcceptAttributeAssignment
+                |> WithDiscardBefore WHITESPACE
+            ) status
+        
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! status = Classifier.name TokenTypes.ElementStart RightArrow status
+
+        let! (fragments, status) = AcceptFragmentsTree status
+
+        let! status = Classifier.name TokenTypes.ElementEnd EndTag status
+
+        return {
+            Element.Attributes = attributes |> Map.ofList
+            Element.Fragments = fragments
+            Element.ElementType = ElementType.Text
+        }, status
+    }
+
+and AcceptElementFunction status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
 
         let! (elementName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
 
-        let! (attributes, status) = 
+        let! (attributes, status) =
             ZeroOrMore (
                 AcceptAttributeAssignment
                 |> WithDiscardBefore WHITESPACE
             ) status
+        
+        let! status = Classifier.discard OPTIONAL_WHITESPACE status
+        let! status = Classifier.name TokenTypes.ElementStart StartTagClose status
 
-
-        let! status = Classifier.name TokenTypes.ElementStart RightArrow status
         return {
             Element.Attributes = attributes |> Map.ofList
-            Element.Name = elementName
-            Element.Parameters = []
+            Element.ElementType = ElementType.FunctionCall { FunctionCall.Method = FunctionMethod.Method(elementName, None); Parameters = [] }
             Element.Fragments = []
         }, status
     }
 
+and AcceptFragmentsTree status continuation =
+    ZeroOrMore (
+        ClassifierFunction.PickOne
+            [
+                MapValue SentenceTree.Text AcceptFragmentText
+                MapValue SentenceTree.Element AcceptElementFunction
+                MapValue SentenceTree.Element AcceptElementText 
+            ]
+    ) status continuation
 // ########### END ELEMENT ###########

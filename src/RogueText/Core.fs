@@ -18,26 +18,33 @@ and [<RequireQualifiedAccess>] Values =
     | Element of Element
     | FunctionCall of FunctionCall
 
+
+and [<RequireQualifiedAccess>] FunctionMethod =
+    | FunctionCall of FunctionCall
+    | Method of Name: string * Module: string option
+
 and FunctionCall =
-    {   Name: string
-        Module: string option
+    {   Method: FunctionMethod
         Parameters: Values list
     }
     
-and [<RequireQualifiedAccess>] WordFragment =
-    | RawText of string
+//and [<RequireQualifiedAccess>] WordFragment =
+//    | RawText of string
+//    | FunctionCall of FunctionCall
+
+and [<RequireQualifiedAccess>] ElementType =
+    | Text
     | FunctionCall of FunctionCall
 
 and Element = 
     {   Fragments: SentenceTree list
         Attributes: Attributes
-        Parameters: Values list
-        Name: string
+        ElementType: ElementType
     }
 
 and [<RequireQualifiedAccess>] SentenceTree =
     | Text of string
-    | Word of WordFragment
+    //| Word of WordFragment
     | Element of Element
 
 and Attributes = Map<string, Values option>
