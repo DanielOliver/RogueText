@@ -171,7 +171,7 @@ let rec AcceptListValue status continuation =
 
         let! (items, status) = 
             ZeroOrMore (
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue ]            
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; MapValue Values.Element AcceptElementFunction; MapValue Values.Element AcceptElementText ]
                 |> WithDiscardBefore WHITESPACE
             ) status
         
@@ -182,7 +182,7 @@ let rec AcceptListValue status continuation =
 // ########### END PRIMITIVES ###########
 
 // ########### BEGIN LISP ###########
-let rec AcceptLispMethodName status continuation = 
+and AcceptLispMethodName status continuation = 
     Classifiers.sub continuation {
         let! (moduleName, status) = 
             ClassifierFunction.ZeroOrOne(
@@ -191,27 +191,27 @@ let rec AcceptLispMethodName status continuation =
             ) status
 
         let! (functionName, status) = AcceptIdentifier status
-        return FunctionMethod.Method(functionName, moduleName), status
+        return FunctionCallType.Method(functionName, moduleName), status
     }
 
-let rec AcceptLispFunctionCall status continuation =
+and AcceptLispFunctionCall status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.FunctionStart LeftParentheses status
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
-        let! (functionMethod, status) =
-            ClassifierFunction.PickOne [ AcceptLispMethodName; MapValue FunctionMethod.FunctionCall AcceptLispFunctionCall ] status
+        let! (functionType, status) =
+            ClassifierFunction.PickOne [ AcceptLispMethodName; MapValue FunctionCallType.FunctionCall AcceptLispFunctionCall ] status
         
         let! (items, status) =
             ZeroOrMore (                
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue ]
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue; MapValue Values.Element AcceptElementFunction; MapValue Values.Element AcceptElementText ]
                 |> WithDiscardBefore WHITESPACE
             ) status
 
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
         let! status = Classifier.name TokenTypes.FunctionEnd RightParentheses status
         return {
-            FunctionCall.Method = functionMethod
+            FunctionCall.Type = functionType
             FunctionCall.Parameters = items
         }, status
     }
@@ -219,13 +219,13 @@ let rec AcceptLispFunctionCall status continuation =
 and AcceptLispFunctionCallValue status continuation =
     MapValue Values.FunctionCall AcceptLispFunctionCall status continuation
 
-let AcceptAssignmentValue status continuation =
+and AcceptAssignmentValue status continuation =
         ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
 // ########### END LISP ###########
 
 
 // ########### BEGIN ATTRIBUTE ###########
-let AcceptAttributeAssignment status continuation =
+and AcceptAttributeAssignment status continuation =
     Classifiers.sub continuation {
         let! (attributeName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
         
@@ -243,14 +243,14 @@ let AcceptAttributeAssignment status continuation =
 
 
 // ########### BEGIN ELEMENT ###########
-let AcceptFragmentText status continuation =
+and AcceptFragmentText status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.TextFragment TextFragment status
         let cleanedText = status.ConsumedText.Replace(@"\{", "{").Replace(@"\<", "<")
         return cleanedText, status
     }
 
-let rec AcceptElementText status continuation =
+and AcceptElementText status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
         let! status = Classifier.discard AtSymbol status
@@ -279,7 +279,18 @@ and AcceptElementFunction status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
 
-        let! (elementName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
+        let! (functionCall, status) =
+            ClassifierFunction.PickOne
+                [
+                    ClassifierFunction.PickOne 
+                        [ 
+                            AcceptQuotedString
+                            AcceptIdentifier 
+                        ] |> MapValue (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
+                    AcceptLispFunctionCall 
+                ]
+            |> MapValue ElementType.FunctionCall
+            <| status
 
         let! (attributes, status) =
             ZeroOrMore (
@@ -292,7 +303,7 @@ and AcceptElementFunction status continuation =
 
         return {
             Element.Attributes = attributes |> Map.ofList
-            Element.ElementType = ElementType.FunctionCall { FunctionCall.Method = FunctionMethod.Method(elementName, None); Parameters = [] }
+            Element.ElementType = functionCall
             Element.Fragments = []
         }, status
     }

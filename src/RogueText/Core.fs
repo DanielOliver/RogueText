@@ -19,12 +19,12 @@ and [<RequireQualifiedAccess>] Values =
     | FunctionCall of FunctionCall
 
 
-and [<RequireQualifiedAccess>] FunctionMethod =
+and [<RequireQualifiedAccess>] FunctionCallType =
     | FunctionCall of FunctionCall
     | Method of Name: string * Module: string option
 
 and FunctionCall =
-    {   Method: FunctionMethod
+    {   Type: FunctionCallType
         Parameters: Values list
     }
     
