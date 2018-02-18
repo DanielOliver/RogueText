@@ -16,7 +16,6 @@
   <ItemGroup>
     <Compile Include="Core.fs" />
     <Compile Include="Parser.fs" />
-    <Compile Include="Translator.fs" />
   </ItemGroup>
 
   <ItemGroup>
