@@ -55,25 +55,22 @@ type TokenTypes =
     | BooleanValue
     | ArrayStart
     | ArrayEnd
-
+    | ElementStart
+    | ElementEnd
 
 
 // ########### BEGIN UTILITY ###########
 let WithDiscardBefore discardFunction function1 status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.discard discardFunction status
-
         let! (variable, status) = function1 status
-
         return variable, status
     }
 
 let WithDiscardAfter discardFunction function1 status continuation =
     Classifiers.sub continuation {
-        let! (variable, status) = function1 status
-        
+        let! (variable, status) = function1 status        
         let! status = Classifier.discard discardFunction status
-
         return variable, status
     }
 
@@ -96,12 +93,27 @@ let MapValue mapper classifier status continuation =
         let! (value, status) = classifier status
         return (mapper value), status
     }
+
+/// Local replacement to test out ZeroOrMore with recursive rule.
+let ZeroOrMore<'a,'c,'d> (classifier: ClassifierBuilderContinuationFromStatus<'a,'c,'c,'d>) (status: ClassifierStatus<'a>) (continuation: ClassifierBuilderFunction<'a, 'd list, 'c>) =
+    let rec RecursiveRule valueList status continuation =
+        Classifiers.sub continuation {
+            let! (tryValue, status) = ClassifierFunction.ZeroOrOne classifier status
+            match tryValue with
+            | Some nextValue -> 
+                return! RecursiveRule (nextValue :: valueList) status
+            | None ->
+                return valueList, status
+        }
+    Classifiers.sub continuation {
+        let! (values, status) = RecursiveRule [] status
+        return List.rev values, status
+    }
 // ########### END UTILITY ###########
 
 
 
 // ########### BEGIN PRIMITIVES ###########
-
 /// "Quoted Words"
 let AcceptQuotedString status continuation =
     Classifiers.sub continuation {
@@ -155,7 +167,7 @@ let rec AcceptListValue status continuation =
         let! status = Classifier.name TokenTypes.ArrayStart LeftBracket status
 
         let! (items, status) = 
-            ClassifierFunction.ZeroOrMore (                
+            ZeroOrMore (
                 ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue ]            
                 |> WithDiscardBefore WHITESPACE
             ) status
@@ -167,7 +179,7 @@ let rec AcceptListValue status continuation =
 // ########### END PRIMITIVES ###########
 
 // ########### BEGIN LISP ###########
-let rec AcceptLispExpression status continuation =
+let rec AcceptLispFunctionCall status continuation =
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ArrayStart LeftParentheses status
         let! status = Classifier.name TokenTypes.ArrayStart OPTIONAL_WHITESPACE status
@@ -179,9 +191,9 @@ let rec AcceptLispExpression status continuation =
 
         let! (functionName, status) = AcceptIdentifier status
         
-        let! (items, status) = 
-            ClassifierFunction.ZeroOrMore (                
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispExpression; AcceptVariableValue ]
+        let! (items, status) =
+            ZeroOrMore (                
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCall; AcceptVariableValue ]
                 |> WithDiscardBefore WHITESPACE
             ) status
 
@@ -194,4 +206,50 @@ let rec AcceptLispExpression status continuation =
         } |> Values.FunctionCall, status
     }
 
+let AcceptAssignmentValue status continuation =
+        ClassifierFunction.PickOne [ AcceptLispFunctionCall; AcceptListValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
 // ########### END LISP ###########
+
+
+// ########### BEGIN ATTRIBUTE ###########
+let AcceptAttributeAssignment status continuation =
+    Classifiers.sub continuation {
+        let! (attributeName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
+        
+        let! (value, status) =
+            ClassifierFunction.ZeroOrOne (
+                AcceptAssignmentValue
+                |> WithDiscardBefore OPTIONAL_WHITESPACE
+                |> WithDiscardBefore Colon
+                |> WithDiscardBefore OPTIONAL_WHITESPACE
+            ) status
+
+        return (attributeName, value), status
+    }
+// ########### END ATTRIBUTE ###########
+
+
+// ########### BEGIN ELEMENT ###########
+let AcceptStartElement status continuation =
+    Classifiers.sub continuation {
+        let! status = Classifier.name TokenTypes.ElementStart LeftArrow status
+
+        let! (elementName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
+
+        let! (attributes, status) = 
+            ZeroOrMore (
+                AcceptAttributeAssignment
+                |> WithDiscardBefore WHITESPACE
+            ) status
+
+
+        let! status = Classifier.name TokenTypes.ElementStart RightArrow status
+        return {
+            Element.Attributes = attributes |> Map.ofList
+            Element.Name = elementName
+            Element.Parameters = []
+            Element.Fragments = []
+        }, status
+    }
+
+// ########### END ELEMENT ###########

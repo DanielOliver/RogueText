@@ -57,7 +57,7 @@ type ParserPrimitiveTests () =
 
         for (shouldAccept, fragment, dataToAccept) in testFragments do
 
-            let fragmentResult = RogueText.Parser.AcceptLispExpression fragment Continuation
+            let fragmentResult = RogueText.Parser.AcceptLispFunctionCall fragment Continuation
         
             match shouldAccept, fragmentResult with
             | true, Ok(cleanText, _) -> Assert.AreEqual(dataToAccept, cleanText)

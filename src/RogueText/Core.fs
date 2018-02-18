@@ -31,6 +31,7 @@ and [<RequireQualifiedAccess>] WordFragment =
 and Element = 
     {   Fragments: SentenceTree list
         Attributes: Attributes
+        Parameters: Values list
         Name: string
     }
 
