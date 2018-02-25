@@ -90,9 +90,8 @@ let NameConsumer name classifier status continuation =
         let! (status: ClassifierStatus<_>) = classifier status
         return name, status
     }
-
     
-let MapValue mapper classifier status continuation =
+let MapClassifier mapper classifier status continuation =
     Classifiers.sub continuation {
         let! (value, status) = classifier status
         return (mapper value), status
@@ -153,7 +152,7 @@ let AcceptVariable status continuation =
 /// Any decimal number
 let AcceptNumberValue status continuation = MapConsumer (System.Convert.ToDecimal >> Values.Number) (Classifier.name TokenTypes.NumberValue NumberRegex) status continuation
 /// Any quoted string
-let AcceptStringValue status continuation = MapValue Values.String (AcceptQuotedString) status continuation
+let AcceptStringValue status continuation = MapClassifier Values.String (AcceptQuotedString) status continuation
 /// True
 let AcceptTrue status continuation = NameConsumer true (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
 /// False
@@ -163,7 +162,7 @@ let AcceptTrueValue status continuation = NameConsumer (Values.Boolean true) (Cl
 /// False in Values
 let AcceptFalseValue status continuation = NameConsumer (Values.Boolean false) (Classifier.name TokenTypes.BooleanValue FALSE) status continuation
 /// Variable in Values
-let AcceptVariableValue status continuation = MapValue Values.Variable AcceptVariable status continuation
+let AcceptVariableValue status continuation = MapClassifier Values.Variable AcceptVariable status continuation
 /// An array of values
 let rec AcceptListValue status continuation = 
     Classifiers.sub continuation {
@@ -171,7 +170,7 @@ let rec AcceptListValue status continuation =
 
         let! (items, status) = 
             ZeroOrMore (
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; MapValue Values.Element AcceptElementFunction; MapValue Values.Element AcceptElementText ]
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; MapClassifier Values.Element AcceptElementFunction; MapClassifier Values.Element AcceptElementText ]
                 |> WithDiscardBefore WHITESPACE
             ) status
         
@@ -202,11 +201,11 @@ and AcceptLispFunctionCall status continuation =
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
         let! (functionType, status) =
-            ClassifierFunction.PickOne [ AcceptLispMethodName; MapValue FunctionCallType.FunctionCall AcceptLispFunctionCall ] status
+            ClassifierFunction.PickOne [ AcceptLispMethodName; MapClassifier FunctionCallType.FunctionCall AcceptLispFunctionCall ] status
         
         let! (items, status) =
             ZeroOrMore (                
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue; MapValue Values.Element AcceptElementFunction; MapValue Values.Element AcceptElementText ]
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue; MapClassifier Values.Element AcceptElementFunction; MapClassifier Values.Element AcceptElementText ]
                 |> WithDiscardBefore WHITESPACE
             ) status
 
@@ -219,7 +218,7 @@ and AcceptLispFunctionCall status continuation =
     }
 /// Wrap as a Values.FunctionCall
 and AcceptLispFunctionCallValue status continuation =
-    MapValue Values.FunctionCall AcceptLispFunctionCall status continuation
+    MapClassifier Values.FunctionCall AcceptLispFunctionCall status continuation
 /// A function, variable, number, string, or boolean
 and AcceptAssignmentValue status continuation =
         ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
@@ -291,10 +290,10 @@ and AcceptElementFunction status continuation =
                         [ 
                             AcceptQuotedString
                             AcceptIdentifier 
-                        ] |> MapValue (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
+                        ] |> MapClassifier (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
                     AcceptLispFunctionCall
                 ]
-            |> MapValue ElementType.FunctionCall
+            |> MapClassifier ElementType.FunctionCall
             <| status
 
         let! (attributes, status) =
@@ -317,9 +316,9 @@ and AcceptFragmentsTree status continuation =
     ZeroOrMore (
         ClassifierFunction.PickOne
             [
-                MapValue SentenceTree.Text AcceptFragmentText
-                MapValue SentenceTree.Element AcceptElementFunction
-                MapValue SentenceTree.Element AcceptElementText 
+                MapClassifier SentenceTree.Text AcceptFragmentText
+                MapClassifier SentenceTree.Element AcceptElementFunction
+                MapClassifier SentenceTree.Element AcceptElementText 
             ]
     ) status continuation
 // ########### END ELEMENT ###########
