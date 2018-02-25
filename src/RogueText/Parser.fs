@@ -24,6 +24,7 @@ let RightArrow = Consumers.TakeChar '>'
 let ForwardSlash = Consumers.TakeChar '/'
 let Comma = Consumers.TakeChar ','
 let Period = Consumers.TakeChar '.'
+let Equals = Consumers.TakeChar '='
 
 let TRUE = Consumers.TakeWord "true" true
 let FALSE = Consumers.TakeWord "false" true
@@ -100,6 +101,8 @@ let AcceptVariable status continuation =
 let AcceptNumberValue status continuation = ClassifierFunction.MapConsumer (System.Convert.ToDecimal >> Values.Number) (Classifier.name TokenTypes.NumberValue NumberRegex) status continuation
 /// Any quoted string
 let AcceptStringValue status continuation = ClassifierFunction.MapClassifier Values.String (AcceptQuotedString) status continuation
+/// Any quoted string
+let AcceptIdentifierValue status continuation = ClassifierFunction.MapClassifier Values.String (AcceptIdentifier) status continuation
 /// True
 let AcceptTrue status continuation = ClassifierFunction.NameConsumer true (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
 /// False
@@ -168,12 +171,12 @@ and AcceptLispFunctionCallValue status continuation =
     ClassifierFunction.MapClassifier Values.FunctionCall AcceptLispFunctionCall status continuation
 /// A function, variable, number, string, or boolean
 and AcceptAssignmentValue status continuation =
-        ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
+        ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue; AcceptIdentifierValue ] status continuation
 // ########### END LISP ###########
 
 
 // ########### BEGIN ATTRIBUTE ###########
-///  attribute1: someValue    OR    attribute1Value
+///  attribute1=someValue    OR    attribute1Value
 and AcceptAttributeAssignment status continuation =
     Classifiers.sub continuation {
         let! (attributeName, status) = ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ] status
@@ -182,7 +185,7 @@ and AcceptAttributeAssignment status continuation =
             ClassifierFunction.ZeroOrOne (
                 AcceptAssignmentValue
                 |> ClassifierFunction.WithDiscardBefore OPTIONAL_WHITESPACE
-                |> ClassifierFunction.WithDiscardBefore Colon
+                |> ClassifierFunction.WithDiscardBefore Equals
                 |> ClassifierFunction.WithDiscardBefore OPTIONAL_WHITESPACE
             ) status
 
