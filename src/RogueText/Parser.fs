@@ -61,60 +61,7 @@ type TokenTypes =
     | TextFragment
     | FunctionStart
     | FunctionEnd
-
-
-// ########### BEGIN UTILITY ###########
-let WithDiscardBefore discardFunction function1 status continuation =
-    Classifiers.sub continuation {
-        let! status = Classifier.discard discardFunction status
-        let! (variable, status) = function1 status
-        return variable, status
-    }
-
-let WithDiscardAfter discardFunction function1 status continuation =
-    Classifiers.sub continuation {
-        let! (variable, status) = function1 status        
-        let! status = Classifier.discard discardFunction status
-        return variable, status
-    }
-
-let MapConsumer mapper classifier status continuation =
-    Classifiers.sub continuation {
-        let! (status: ClassifierStatus<_>) = classifier status
-        let value = mapper status.ConsumedText
-        return value, status
-    }
-
-let NameConsumer name classifier status continuation =
-    Classifiers.sub continuation {
-        let! (status: ClassifierStatus<_>) = classifier status
-        return name, status
-    }
     
-let MapClassifier mapper classifier status continuation =
-    Classifiers.sub continuation {
-        let! (value, status) = classifier status
-        return (mapper value), status
-    }
-
-/// Local replacement to test out ZeroOrMore with recursive rule.
-let ZeroOrMore<'a,'c,'d> (classifier: ClassifierBuilderContinuationFromStatus<'a,'c,'c,'d>) (status: ClassifierStatus<'a>) (continuation: ClassifierBuilderFunction<'a, 'd list, 'c>) =
-    let rec RecursiveRule valueList status continuation =
-        Classifiers.sub continuation {
-            let! (tryValue, status) = ClassifierFunction.ZeroOrOne classifier status
-            match tryValue with
-            | Some nextValue -> 
-                return! RecursiveRule (nextValue :: valueList) status
-            | None ->
-                return valueList, status
-        }
-    Classifiers.sub continuation {
-        let! (values, status) = RecursiveRule [] status
-        return List.rev values, status
-    }
-// ########### END UTILITY ###########
-
-
 
 // ########### BEGIN PRIMITIVES ###########
 /// "Quoted Words"
@@ -144,34 +91,34 @@ let AcceptVariable status continuation =
     Classifiers.sub continuation {
         let! (variable, status) =
             ClassifierFunction.PickOne [ AcceptQuotedString; AcceptIdentifier ]
-            |> WithDiscardBefore AtSymbol
+            |> ClassifierFunction.WithDiscardBefore AtSymbol
             <| status
 
         return variable, status
     }
 /// Any decimal number
-let AcceptNumberValue status continuation = MapConsumer (System.Convert.ToDecimal >> Values.Number) (Classifier.name TokenTypes.NumberValue NumberRegex) status continuation
+let AcceptNumberValue status continuation = ClassifierFunction.MapConsumer (System.Convert.ToDecimal >> Values.Number) (Classifier.name TokenTypes.NumberValue NumberRegex) status continuation
 /// Any quoted string
-let AcceptStringValue status continuation = MapClassifier Values.String (AcceptQuotedString) status continuation
+let AcceptStringValue status continuation = ClassifierFunction.MapClassifier Values.String (AcceptQuotedString) status continuation
 /// True
-let AcceptTrue status continuation = NameConsumer true (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
+let AcceptTrue status continuation = ClassifierFunction.NameConsumer true (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
 /// False
-let AcceptFalse status continuation = NameConsumer false (Classifier.name TokenTypes.BooleanValue FALSE) status continuation
+let AcceptFalse status continuation = ClassifierFunction.NameConsumer false (Classifier.name TokenTypes.BooleanValue FALSE) status continuation
 /// True in Values
-let AcceptTrueValue status continuation = NameConsumer (Values.Boolean true) (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
+let AcceptTrueValue status continuation = ClassifierFunction.NameConsumer (Values.Boolean true) (Classifier.name TokenTypes.BooleanValue TRUE) status continuation
 /// False in Values
-let AcceptFalseValue status continuation = NameConsumer (Values.Boolean false) (Classifier.name TokenTypes.BooleanValue FALSE) status continuation
+let AcceptFalseValue status continuation = ClassifierFunction.NameConsumer (Values.Boolean false) (Classifier.name TokenTypes.BooleanValue FALSE) status continuation
 /// Variable in Values
-let AcceptVariableValue status continuation = MapClassifier Values.Variable AcceptVariable status continuation
+let AcceptVariableValue status continuation = ClassifierFunction.MapClassifier Values.Variable AcceptVariable status continuation
 /// An array of values
 let rec AcceptListValue status continuation = 
     Classifiers.sub continuation {
         let! status = Classifier.name TokenTypes.ArrayStart LeftBracket status
 
         let! (items, status) = 
-            ZeroOrMore (
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; MapClassifier Values.Element AcceptElementFunction; MapClassifier Values.Element AcceptElementText ]
-                |> WithDiscardBefore WHITESPACE
+            ClassifierFunction.ZeroOrMore (
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; ClassifierFunction.MapClassifier Values.Element AcceptElementFunction; ClassifierFunction.MapClassifier Values.Element AcceptElementText ]
+                |> ClassifierFunction.WithDiscardBefore WHITESPACE
             ) status
         
         let! status = Classifier.discard (if List.isEmpty items then OPTIONAL_WHITESPACE else WHITESPACE) status
@@ -188,7 +135,7 @@ and AcceptLispMethodName status continuation =
         let! (moduleName, status) = 
             ClassifierFunction.ZeroOrOne(
                 AcceptIdentifier
-                |> WithDiscardAfter Period
+                |> ClassifierFunction.WithDiscardAfter Period
             ) status
 
         let! (functionName, status) = AcceptIdentifier status
@@ -201,12 +148,12 @@ and AcceptLispFunctionCall status continuation =
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
 
         let! (functionType, status) =
-            ClassifierFunction.PickOne [ AcceptLispMethodName; MapClassifier FunctionCallType.FunctionCall AcceptLispFunctionCall ] status
+            ClassifierFunction.PickOne [ AcceptLispMethodName; ClassifierFunction.MapClassifier FunctionCallType.FunctionCall AcceptLispFunctionCall ] status
         
         let! (items, status) =
-            ZeroOrMore (                
-                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue; MapClassifier Values.Element AcceptElementFunction; MapClassifier Values.Element AcceptElementText ]
-                |> WithDiscardBefore WHITESPACE
+            ClassifierFunction.ZeroOrMore (                
+                ClassifierFunction.PickOne [ AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptListValue; AcceptLispFunctionCallValue; AcceptVariableValue; ClassifierFunction.MapClassifier Values.Element AcceptElementFunction; ClassifierFunction.MapClassifier Values.Element AcceptElementText ]
+                |> ClassifierFunction.WithDiscardBefore WHITESPACE
             ) status
 
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
@@ -218,7 +165,7 @@ and AcceptLispFunctionCall status continuation =
     }
 /// Wrap as a Values.FunctionCall
 and AcceptLispFunctionCallValue status continuation =
-    MapClassifier Values.FunctionCall AcceptLispFunctionCall status continuation
+    ClassifierFunction.MapClassifier Values.FunctionCall AcceptLispFunctionCall status continuation
 /// A function, variable, number, string, or boolean
 and AcceptAssignmentValue status continuation =
         ClassifierFunction.PickOne [ AcceptLispFunctionCallValue; AcceptNumberValue; AcceptStringValue; AcceptTrueValue; AcceptFalseValue; AcceptVariableValue ] status continuation
@@ -234,9 +181,9 @@ and AcceptAttributeAssignment status continuation =
         let! (value, status) =
             ClassifierFunction.ZeroOrOne (
                 AcceptAssignmentValue
-                |> WithDiscardBefore OPTIONAL_WHITESPACE
-                |> WithDiscardBefore Colon
-                |> WithDiscardBefore OPTIONAL_WHITESPACE
+                |> ClassifierFunction.WithDiscardBefore OPTIONAL_WHITESPACE
+                |> ClassifierFunction.WithDiscardBefore Colon
+                |> ClassifierFunction.WithDiscardBefore OPTIONAL_WHITESPACE
             ) status
 
         return (attributeName, value), status
@@ -259,9 +206,9 @@ and AcceptElementText status continuation =
         let! status = Classifier.discard AtSymbol status
 
         let! (attributes, status) =
-            ZeroOrMore (
+            ClassifierFunction.ZeroOrMore (
                 AcceptAttributeAssignment
-                |> WithDiscardBefore WHITESPACE
+                |> ClassifierFunction.WithDiscardBefore WHITESPACE
             ) status
         
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
@@ -290,16 +237,16 @@ and AcceptElementFunction status continuation =
                         [ 
                             AcceptQuotedString
                             AcceptIdentifier 
-                        ] |> MapClassifier (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
+                        ] |> ClassifierFunction.MapClassifier (fun methodName -> { FunctionCall.Type = FunctionCallType.Method(methodName, None); Parameters = [] } )
                     AcceptLispFunctionCall
                 ]
-            |> MapClassifier ElementType.FunctionCall
+            |> ClassifierFunction.MapClassifier ElementType.FunctionCall
             <| status
 
         let! (attributes, status) =
-            ZeroOrMore (
+            ClassifierFunction.ZeroOrMore (
                 AcceptAttributeAssignment
-                |> WithDiscardBefore WHITESPACE
+                |> ClassifierFunction.WithDiscardBefore WHITESPACE
             ) status
         
         let! status = Classifier.discard OPTIONAL_WHITESPACE status
@@ -313,12 +260,12 @@ and AcceptElementFunction status continuation =
     }
 ///  \<(methodName arg1) attributes/> some text <@ attributes> more  text </>
 and AcceptFragmentsTree status continuation =
-    ZeroOrMore (
+    ClassifierFunction.ZeroOrMore (
         ClassifierFunction.PickOne
             [
-                MapClassifier SentenceTree.Text AcceptFragmentText
-                MapClassifier SentenceTree.Element AcceptElementFunction
-                MapClassifier SentenceTree.Element AcceptElementText 
+                ClassifierFunction.MapClassifier SentenceTree.Text AcceptFragmentText
+                ClassifierFunction.MapClassifier SentenceTree.Element AcceptElementFunction
+                ClassifierFunction.MapClassifier SentenceTree.Element AcceptElementText 
             ]
     ) status continuation
 // ########### END ELEMENT ###########
